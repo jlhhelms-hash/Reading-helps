@@ -24,7 +24,7 @@ after(() => {
 const post = (url, body, headers = { 'Content-Type': 'application/json' }) =>
   fetch(base + url, { method: 'POST', headers, body: typeof body === 'string' || body instanceof Uint8Array ? body : JSON.stringify(body) });
 
-const maya = { first: 'Maya', last: 'Rodriguez' };
+const maya = { first: 'Maya', last: 'Rodriguez', grade: 'K', testDate: '2026-10-01' };
 const video = new Uint8Array([26, 69, 223, 163, 1, 2, 3, 4]);
 
 async function teacherGet() {
@@ -54,18 +54,20 @@ test('a first name is required', async () => {
   assert.equal((await post('/api/attempts', { letter: 'B', nameCorrect: true })).status, 400);
 });
 
-test('stars are earned once per letter passed and never taken away', async () => {
+test('every right answer earns a star: one for the name, one for the sound', async () => {
   const stars = async () => (await (await fetch(`${base}/api/stars?first=Leo&last=Tran`)).json());
-  assert.deepEqual(await stars(), { stars: [], returning: false });
+  assert.deepEqual(await stars(), { stars: 0, chart: {}, returning: false });
 
-  const attempt = async (letter, ok) =>
-    (await post('/api/attempts', { first: 'Leo', last: 'Tran', letter, nameCorrect: ok, soundCorrect: ok })).json();
-  assert.deepEqual(await attempt('B', false), { ok: true, stars: [], newStar: false });
-  assert.deepEqual(await attempt('B', true), { ok: true, stars: ['B'], newStar: true });
-  assert.deepEqual(await attempt('A', true), { ok: true, stars: ['A', 'B'], newStar: true });
-  assert.deepEqual(await attempt('B', true), { ok: true, stars: ['A', 'B'], newStar: false });
-  assert.deepEqual(await attempt('B', false), { ok: true, stars: ['A', 'B'], newStar: false });
-  assert.deepEqual(await stars(), { stars: ['A', 'B'], returning: true });
+  const attempt = async (letter, name, sound) => (await post('/api/attempts', {
+    first: 'Leo', last: 'Tran', grade: '1', testDate: '2026-10-02', letter, nameCorrect: name, soundCorrect: sound,
+  })).json();
+  assert.deepEqual(await attempt('B', false, false), { ok: true, stars: 0, chart: { B: { name: false, sound: false } } });
+  assert.deepEqual(await attempt('B', true, false), { ok: true, stars: 1, chart: { B: { name: true, sound: false } } });
+  assert.deepEqual((await attempt('A', true, true)).stars, 3);
+  const last = await attempt('B', false, true);
+  assert.equal(last.stars, 4);
+  assert.deepEqual(last.chart.B, { name: true, sound: true }, 'chart keeps stars from earlier tries');
+  assert.deepEqual(await stars(), { stars: 4, chart: last.chart, returning: true });
 });
 
 test('attempts and videos are saved per student and shown to the teacher', async () => {
@@ -83,17 +85,18 @@ test('attempts and videos are saved per student and shown to the teacher', async
 
   const get = await teacherGet();
   const maya1 = (await (await get('/api/teacher/students')).json()).students.find((s) => s.first === 'Maya');
-  assert.deepEqual([maya1.last, maya1.needsHelp, maya1.practiced, maya1.mastered, maya1.stars, maya1.videoCount],
-    ['Rodriguez', ['B'], [], ['S'], 1, 2]);
+  assert.deepEqual([maya1.last, maya1.grade, maya1.lastTestDate, maya1.needsHelp, maya1.practiced, maya1.mastered, maya1.stars, maya1.videoCount],
+    ['Rodriguez', 'K', '2026-10-01', ['B'], [], ['S'], 3, 2]);
 
   await post('/api/attempts', { ...maya, letter: 'B', retry: true, nameCorrect: true, soundCorrect: true });
   const after = (await (await get('/api/teacher/students')).json()).students.find((s) => s.first === 'Maya');
-  assert.deepEqual([after.needsHelp, after.practiced, after.stars], [[], ['B'], 2], 'B passed after practice');
+  assert.deepEqual([after.needsHelp, after.practiced, after.stars], [[], ['B'], 5], 'B passed after practice');
 
   const detail = await (await get('/api/teacher/students/maya-rodriguez')).json();
   assert.deepEqual(detail.videos.map((v) => [v.letter, v.kind]).sort(), [['B', 'missed'], ['B', 'practice']]);
   assert.equal(detail.attempts[0].retry, true);
   assert.equal(detail.attempts.at(-1).heard, 'bee dee');
+  assert.deepEqual([detail.attempts.at(-1).grade, detail.attempts.at(-1).testDate], ['K', '2026-10-01']);
 
   const clip = await get(`/api/teacher/videos/maya-rodriguez/${file}`, { headers: { range: 'bytes=0-3' } });
   assert.equal(clip.status, 206);
@@ -109,6 +112,13 @@ test('teacher list is sorted by last name', async () => {
   const get = await teacherGet();
   const { students } = await (await get('/api/teacher/students')).json();
   assert.deepEqual(students.map((s) => s.last), ['Adams', 'Brown', 'Rodriguez', 'Tran']);
+});
+
+test('bad grade or date values are not stored', async () => {
+  await post('/api/attempts', { first: 'Odd', last: 'Input', grade: '<b>9</b>', testDate: 'yesterday', letter: 'A', nameCorrect: true, soundCorrect: true });
+  const get = await teacherGet();
+  const odd = await (await get('/api/teacher/students/odd-input')).json();
+  assert.deepEqual([odd.grade, odd.attempts[0].grade, odd.attempts[0].testDate], ['', '', '']);
 });
 
 test('excel exports for the class and for one student', async () => {

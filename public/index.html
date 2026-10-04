@@ -25,6 +25,23 @@
         <label class="field">Last name
           <input id="last-name" autocomplete="off" maxlength="40" required>
         </label>
+        <div class="field-row">
+          <label class="field">Grade
+            <select id="grade" required>
+              <option value="" disabled selected>Choose</option>
+              <option value="Pre-K">Pre-K</option>
+              <option value="K">Kindergarten</option>
+              <option value="1">1st grade</option>
+              <option value="2">2nd grade</option>
+              <option value="3">3rd grade</option>
+              <option value="4">4th grade</option>
+              <option value="5">5th grade</option>
+            </select>
+          </label>
+          <label class="field">Date of test
+            <input id="test-date" type="date" required>
+          </label>
+        </div>
         <label class="field inline">How many letters?
           <select id="letter-count">
             <option value="5">5</option>
@@ -45,6 +62,7 @@
       </div>
       <div class="card chart-card">
         <h2>⭐ My Star Chart</h2>
+        <p class="small">First star: letter name. Second star: letter sound.</p>
         <div class="star-chart" id="welcome-chart"></div>
       </div>
       <button id="begin-btn" class="big-btn go" type="button">Start ▶</button>
@@ -107,6 +125,7 @@
       </div>
       <div class="card chart-card">
         <h2>⭐ My Star Chart</h2>
+        <p class="small">First star: letter name. Second star: letter sound.</p>
         <div class="star-chart" id="done-chart"></div>
       </div>
       <div class="row">

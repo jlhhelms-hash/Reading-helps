@@ -110,6 +110,8 @@ p { margin: 0; }
 
 .field { display: flex; flex-direction: column; gap: 4px; font-weight: 700; font-size: 1.05rem; }
 .field.inline { flex-direction: row; align-items: center; justify-content: space-between; }
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.field-row select, .field-row input { font-size: 1.1rem; padding: 10px 12px; width: 100%; }
 
 input, select {
   font: inherit;
@@ -218,6 +220,7 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 3px; }
 
 .steps { display: flex; gap: 12px; }
 .step { padding: 4px 16px; border-radius: 999px; background: var(--surface); color: var(--muted); font-size: 1rem; border: 3px solid var(--line); }
+.step.active { border-color: var(--c1); color: var(--text); font-weight: 700; }
 .step.done { background: var(--ok); border-color: var(--ok); color: var(--on-color); }
 .step.done::before { content: "✓ "; }
 .step.missed { background: var(--soft); border-color: var(--soft); }
@@ -320,7 +323,9 @@ canvas.trace {
   line-height: 1.1;
   border: 3px dashed var(--line);
 }
-.chart-star { font-size: 1.1rem; line-height: 1.2; min-height: 1.3rem; }
+.chart-stars { display: flex; gap: 1px; font-size: 0.95rem; line-height: 1.2; min-height: 1.2rem; }
+.chart-stars .empty { filter: grayscale(1); opacity: 0.3; }
+.chart-cell.half { background: var(--surface); border: 3px solid var(--gold); color: var(--letter-color, var(--text)); }
 .chart-cell.earned { background: var(--gold-soft); border: 3px solid var(--gold); color: var(--letter-color, var(--text)); }
 .chart-cell.fresh { animation: sparkle 1.2s ease-in-out 3; }
 @keyframes sparkle { 50% { transform: scale(1.15) rotate(-5deg); box-shadow: 0 0 0 6px color-mix(in srgb, var(--gold) 45%, transparent); } }

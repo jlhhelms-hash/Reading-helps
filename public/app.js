@@ -1,7 +1,7 @@
 // Student app: show a letter, listen for its name and sound, and when the
 // student misses, record a short video for the teacher and run practice.
 
-import { ALPHABET, heardLetterName, heardLetterSound, shuffle } from './letters.js';
+import { ALPHABET, LETTERS, heardLetterName, heardLetterSound, shuffle } from './letters.js';
 import { ACTIVITIES, speak } from './activities.js';
 import { openCamera, recordClip, stopCamera, uploadClip } from './recorder.js';
 import { chime, confetti, flyStar, letterColor, renderStarChart } from './fun.js';
@@ -11,8 +11,12 @@ const RECORD_SECONDS = 5;
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 const $ = (id) => document.getElementById(id);
-// student is { first, last }. stars are the letters this student has ever earned.
-const state = { student: null, adultMode: !Recognition, practiced: [], passed: 0, stars: [], newStars: [] };
+// student is { first, last, grade, testDate }. stars is the student's star total;
+// chart marks which letters' name and sound they have gotten right.
+const state = {
+  student: null, adultMode: !Recognition, practiced: [], passed: 0,
+  stars: 0, chart: {}, starsToday: 0, newChart: [],
+};
 
 function show(screen) {
   document.querySelectorAll('.screen').forEach((s) => { s.hidden = s.id !== `screen-${screen}`; });
@@ -64,40 +68,51 @@ function setFeedback(text, kind = '') {
   f.className = `feedback ${kind}`;
 }
 
-function markStep(step, correct) {
-  $(`step-${step}`).className = `step ${correct ? 'done' : 'missed'}`;
-}
+const STEPS = {
+  name: {
+    question: 'What is the name of this letter?',
+    check: heardLetterName,
+    adult: (letter) => `Grown-up: did they say the letter name "${letter}"?`,
+    right: (letter) => `Yes! That's ${letter}!`,
+    wrong: (letter) => `This letter is ${letter}.`,
+  },
+  sound: {
+    question: 'What is the sound of this letter?',
+    check: heardLetterSound,
+    adult: (letter) => `Grown-up: did they say the ${letter} sound?`,
+    right: (letter) => `Yes! That's the ${letter} sound!`,
+    wrong: (letter) => {
+      const [word] = LETTERS[letter].words[0];
+      return LETTERS[letter].soundAtEnd ? `${letter} makes the sound at the end of ${word}.` : `${letter} makes the sound at the start of ${word}.`;
+    },
+  },
+};
 
 // Ask a grown-up to judge, for browsers without speech recognition.
-async function adultCheck(letter) {
+async function adultCheck(letter, step) {
   $('say-btn').hidden = true;
   $('adult-check').hidden = false;
-  const ask = async (question) => {
-    $('adult-question').textContent = question;
-    const yes = nextClick($('adult-yes')).then(() => true);
-    const no = nextClick($('adult-no')).then(() => false);
-    return Promise.race([yes, no]);
-  };
-  const name = await ask(`Grown-up: did they say the name "${letter}"?`);
-  markStep('name', name);
-  const sound = await ask(`Grown-up: did they say the ${letter} sound?`);
-  markStep('sound', sound);
+  $('adult-question').textContent = STEPS[step].adult(letter);
+  const yes = nextClick($('adult-yes')).then(() => true);
+  const no = nextClick($('adult-no')).then(() => false);
+  const correct = await Promise.race([yes, no]);
   $('adult-check').hidden = true;
   $('say-btn').hidden = false;
-  return { name, sound, heard: '', checkedBy: 'adult' };
+  return { correct, heard: '', checkedBy: 'adult' };
 }
 
-// The student taps "Say it" and says the letter's name and its sound together.
-// Whatever they get right on any try counts. Returns { name, sound, heard, checkedBy }.
-async function checkLetter(letter) {
-  const got = { name: false, sound: false };
-  const heardLog = [];
-  $('prompt').textContent = 'Tap “Say it”. Say the letter and its sound.';
-  speak('Say the name of this letter, and the sound it makes.');
+// One question: the letter's name, or its sound. The student taps "Say it" and
+// answers; they get TRIES tries. Returns { correct, heard, checkedBy }.
+async function askStep(letter, step) {
+  const { question, check } = STEPS[step];
+  $(`step-${step}`).classList.add('active');
+  $('prompt').textContent = question;
+  setFeedback('Tap “Say it”, then answer.');
+  await speak(question);
 
+  const heardLog = [];
   for (let tries = 0; tries < TRIES;) {
-    if (state.adultMode) return adultCheck(letter);
-    if (!tries) setFeedback('');
+    if (state.adultMode) return adultCheck(letter, step);
     await nextClick($('say-btn'));
     window.speechSynthesis?.cancel();
     $('say-btn').classList.add('listening');
@@ -120,30 +135,14 @@ async function checkLetter(letter) {
       continue;
     }
     heardLog.push(heard[0]);
-    got.name ||= heardLetterName(letter, heard);
-    got.sound ||= heardLetterSound(letter, heard);
-    if (got.name) markStep('name', true);
-    if (got.sound) markStep('sound', true);
-    if (got.name && got.sound) break;
-
+    if (check(letter, heard)) return { correct: true, heard: heardLog.join(' / '), checkedBy: 'app' };
     tries++;
-    if (tries >= TRIES) break;
-    if (got.name) {
-      setFeedback(`Yes, that's ${letter}! Now tap “Say it” and say its sound.`, 'oops');
-      $('prompt').textContent = `What sound does ${letter} make?`;
-    } else if (got.sound) {
-      setFeedback('Good sound! Now tap “Say it” and say the letter’s name.', 'oops');
-      $('prompt').textContent = 'What is this letter’s name?';
-    } else {
-      setFeedback(`I heard "${heard[0]}". Try one more time!`, 'oops');
-    }
+    if (tries < TRIES) setFeedback(`I heard "${heard[0]}". Try one more time!`, 'oops');
   }
-  if (!got.name) markStep('name', false);
-  if (!got.sound) markStep('sound', false);
-  return { ...got, heard: heardLog.join(' / '), checkedBy: 'app' };
+  return { correct: false, heard: heardLog.join(' / '), checkedBy: 'app' };
 }
 
-// Saves the result. Resolves with { stars, newStar } from the server, or null if saving failed.
+// Saves the result. Resolves with { stars, chart } from the server, or null if saving failed.
 async function saveAttempt(record) {
   try {
     const res = await fetch('api/attempts', {
@@ -159,7 +158,7 @@ async function saveAttempt(record) {
 }
 
 function showStarCount() {
-  $('star-count').textContent = `⭐ ${state.stars.length}`;
+  $('star-count').textContent = `⭐ ${state.stars}`;
 }
 
 function cheerOwl() {
@@ -169,7 +168,34 @@ function cheerOwl() {
   owl.classList.add('cheer');
 }
 
-// Test one letter. Returns true when both the name and the sound were right.
+// A right answer: the star pops out of the letter and flies to the counter.
+async function earnStar(letter, step) {
+  state.stars++;
+  state.starsToday++;
+  (state.chart[letter] ||= { name: false, sound: false })[step] = true;
+  const isNew = !state.newChart.includes(letter);
+  if (isNew) state.newChart.push(letter);
+  $(`step-${step}`).className = 'step done';
+  $('prompt').textContent = STEPS[step].right(letter);
+  setFeedback('⭐ You earned a star! ⭐', 'yay');
+  cheerOwl();
+  confetti(step === 'sound' ? 100 : 60);
+  chime();
+  await flyStar($('letter-card'), $('star-count'));
+  showStarCount();
+  await speak(`${STEPS[step].right(letter)} You earned a star!`);
+}
+
+async function missStep(letter, step) {
+  $(`step-${step}`).className = 'step missed';
+  $('prompt').textContent = STEPS[step].wrong(letter);
+  setFeedback("That's OK! We'll practice it.", 'oops');
+  await speak(STEPS[step].wrong(letter));
+  await wait(500);
+}
+
+// Test one letter: first its name, then its sound, with a star for each right answer.
+// Returns true when both were right.
 async function testLetter(letter, retry) {
   show('letter');
   $('letter-upper').textContent = letter;
@@ -183,37 +209,38 @@ async function testLetter(letter, retry) {
   card.style.animation = '';
   ['name', 'sound'].forEach((s) => { $(`step-${s}`).className = 'step'; });
 
-  const result = await checkLetter(letter);
-  const saved = await saveAttempt({
-    letter, retry, nameCorrect: result.name, soundCorrect: result.sound,
-    heard: result.heard, checkedBy: result.checkedBy,
-  });
+  const name = await askStep(letter, 'name');
+  if (name.correct) await earnStar(letter, 'name');
+  else await missStep(letter, 'name');
+  await wait(400);
 
-  const passed = result.name && result.sound;
+  const sound = await askStep(letter, 'sound');
+  if (sound.correct) await earnStar(letter, 'sound');
+  else await missStep(letter, 'sound');
+
+  const saved = await saveAttempt({
+    letter, retry, nameCorrect: name.correct, soundCorrect: sound.correct,
+    heard: [name.heard && `name: ${name.heard}`, sound.heard && `sound: ${sound.heard}`].filter(Boolean).join(' · '),
+    checkedBy: name.checkedBy === 'adult' || sound.checkedBy === 'adult' ? 'adult' : 'app',
+  });
+  if (saved) {
+    // The server's count is the real one (it includes other sessions).
+    state.stars = saved.stars;
+    state.chart = saved.chart;
+    showStarCount();
+  }
+
+  const passed = name.correct && sound.correct;
   if (passed) {
     card.classList.add('pass');
-    cheerOwl();
-    if (saved?.newStar) {
-      state.stars = saved.stars;
-      state.newStars.push(letter);
-      $('prompt').textContent = `You earned a star for ${letter}!`;
-      setFeedback('⭐ Super job! ⭐', 'yay');
-      confetti();
-      chime();
-      await flyStar(card, $('star-count'));
-      showStarCount();
-      await speak(`You earned a star for ${letter}!`);
-    } else {
-      $('prompt').textContent = 'You did it! 🎉';
-      setFeedback(`You already have a star for ${letter}. Great job!`, 'yay');
-      confetti(40);
-      await speak('Great job!');
-    }
-    await wait(800);
+    $('prompt').textContent = `You know ${letter}! 🎉`;
+    setFeedback('Two stars! On to the next letter!', 'yay');
+    await wait(1200);
   } else {
-    setFeedback(`This letter is ${letter}. Let's practice it together!`, 'oops');
-    await speak(`This letter is ${letter}. Let's practice it together!`);
-    await wait(800);
+    $('prompt').textContent = `Let's practice ${letter} together!`;
+    setFeedback('');
+    await speak(`Let's practice ${letter} together!`);
+    await wait(500);
   }
   return passed;
 }
@@ -271,7 +298,8 @@ async function practice(letter) {
 async function run(count) {
   state.practiced = [];
   state.passed = 0;
-  state.newStars = [];
+  state.starsToday = 0;
+  state.newChart = [];
   const letters = shuffle(ALPHABET).slice(0, count);
   $('who').textContent = `👋 ${state.student.first}`;
   showStarCount();
@@ -294,15 +322,15 @@ async function run(count) {
 function showDone(total) {
   show('done');
   const { first } = state.student;
-  const n = state.newStars.length;
-  $('done-summary').textContent = `You got ${state.passed} of ${total} letters, ${first}!`;
+  const n = state.starsToday;
+  $('done-summary').textContent = `You knew ${state.passed} of ${total} letters, ${first}!`;
   $('done-stars').textContent = n
-    ? `You earned ${n} new ${n === 1 ? 'star' : 'stars'} today! You have ${state.stars.length} of 26.`
-    : `You have ${state.stars.length} of 26 stars. Keep going!`;
-  renderStarChart($('done-chart'), state.stars, state.newStars);
-  confetti(state.newStars.length ? 120 : 60);
+    ? `You earned ${n} ${n === 1 ? 'star' : 'stars'} today! You have ${state.stars} stars in all.`
+    : `You have ${state.stars} stars. Let's practice and earn more!`;
+  renderStarChart($('done-chart'), state.chart, state.newChart);
+  confetti(n ? 120 : 60);
   if (n) chime();
-  speak(n ? `Great job, ${first}! You earned ${n} new ${n === 1 ? 'star' : 'stars'}!` : `Great job, ${first}!`);
+  speak(n ? `Great job, ${first}! You earned ${n} ${n === 1 ? 'star' : 'stars'} today!` : `Great job, ${first}!`);
 }
 
 async function showWelcome() {
@@ -311,16 +339,17 @@ async function showWelcome() {
   try {
     const params = new URLSearchParams(state.student);
     const res = await fetch(`api/stars?${params}`);
-    ({ stars: state.stars, returning } = await res.json());
+    ({ stars: state.stars, chart: state.chart, returning } = await res.json());
   } catch {
-    state.stars = [];
+    state.stars = 0;
+    state.chart = {};
   }
   show('welcome');
   $('welcome-hello').textContent = returning ? `Welcome back, ${first}!` : `Hi, ${first}! Nice to meet you!`;
-  $('welcome-stars').textContent = state.stars.length
-    ? `You have ${state.stars.length} ${state.stars.length === 1 ? 'star' : 'stars'}. Let's earn more!`
-    : 'Say each letter and its sound to earn a star!';
-  renderStarChart($('welcome-chart'), state.stars);
+  $('welcome-stars').textContent = state.stars
+    ? `You have ${state.stars} ${state.stars === 1 ? 'star' : 'stars'}. Let's earn more!`
+    : 'Say the name and the sound of each letter to earn stars!';
+  renderStarChart($('welcome-chart'), state.chart);
   speak(returning ? `Welcome back, ${first}!` : `Hi, ${first}! Let's earn some stars!`);
 }
 
@@ -343,16 +372,25 @@ $('start-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const first = tidy($('first-name').value);
   const last = tidy($('last-name').value);
-  if (!first || !last) return;
-  state.student = { first, last };
+  const grade = $('grade').value;
+  const testDate = $('test-date').value;
+  if (!first || !last || !grade || !testDate) return;
+  state.student = { first, last, grade, testDate };
   showWelcome();
 });
 
 $('begin-btn').addEventListener('click', () => run(Number($('letter-count').value)));
 $('again-btn').addEventListener('click', () => run(Number($('letter-count').value)));
+function today() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+$('test-date').value = today();
+
 $('switch-btn').addEventListener('click', () => {
   $('first-name').value = '';
   $('last-name').value = '';
+  $('grade').value = '';
   state.student = null;
   show('start');
 });

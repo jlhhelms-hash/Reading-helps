@@ -83,16 +83,27 @@ export function flyStar(from, to) {
   });
 }
 
-// A–Z chart: earned letters show a gold star; `fresh` ones sparkle.
-export function renderStarChart(box, stars, fresh = []) {
+// A–Z chart. `chart` is { B: { name: true, sound: false }, ... }: each letter shows
+// two stars, the first for its name and the second for its sound. `fresh` letters sparkle.
+export function renderStarChart(box, chart, fresh = []) {
   box.replaceChildren(...ALPHABET.map((letter) => {
+    const { name = false, sound = false } = chart[letter] || {};
     const cell = document.createElement('div');
-    const earned = stars.includes(letter);
-    cell.className = `chart-cell${earned ? ' earned' : ''}${fresh.includes(letter) ? ' fresh' : ''}`;
-    cell.innerHTML = `<span class="chart-star">${earned ? '⭐' : ''}</span><span class="chart-letter"></span>`;
-    cell.querySelector('.chart-letter').textContent = letter + letter.toLowerCase();
-    if (earned) cell.style.setProperty('--letter-color', letterColor(letter));
-    cell.title = earned ? `${letter}: star earned!` : `${letter}: not yet`;
+    const level = name && sound ? ' earned' : name || sound ? ' half' : '';
+    cell.className = `chart-cell${level}${fresh.includes(letter) ? ' fresh' : ''}`;
+    const stars = document.createElement('span');
+    stars.className = 'chart-stars';
+    for (const got of [name, sound]) {
+      const star = document.createElement('span');
+      star.textContent = '⭐';
+      if (!got) star.className = 'empty';
+      stars.append(star);
+    }
+    const label = document.createElement('span');
+    label.textContent = letter + letter.toLowerCase();
+    cell.append(stars, label);
+    if (name || sound) cell.style.setProperty('--letter-color', letterColor(letter));
+    cell.title = `${letter}: name ${name ? '⭐' : 'not yet'}, sound ${sound ? '⭐' : 'not yet'}`;
     return cell;
   }));
 }

@@ -19,6 +19,8 @@ function el(tag, attrs = {}, ...children) {
   return node;
 }
 
+const gradeLabel = (g) => (!g ? '' : g === 'K' ? 'Kindergarten' : g === 'Pre-K' ? 'Pre-K' : `Grade ${g}`);
+
 const when = (iso) => (iso ? new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '');
 
 async function api(path, options) {
@@ -43,13 +45,13 @@ async function loadList() {
     el('strong', {}, s.last ? `${s.last}, ${s.first}` : s.first),
     el('span', { class: 'meta' }, `⭐ ${s.stars} · 🎥 ${s.videoCount}`),
     el('span', {}, s.needsHelp.length ? `Needs help: ${s.needsHelp.join(' ')}` : 'No letters need help'),
-    el('span', { class: 'meta' }, `${s.mastered.length + s.practiced.length} passed · ${when(s.lastActive)}`))));
+    el('span', { class: 'meta' }, [gradeLabel(s.grade), s.lastTestDate && `tested ${s.lastTestDate}`].filter(Boolean).join(' · ')))));
 }
 
 async function loadStudent(id) {
   const s = await api(`students/${encodeURIComponent(id)}`);
   show('student');
-  $('student-name').textContent = `${s.first} ${s.last} · ⭐ ${s.stars.length}`;
+  $('student-name').textContent = [`${s.first} ${s.last}`, gradeLabel(s.grade), `⭐ ${s.stars}`].filter(Boolean).join(' · ');
   $('student-export').href = `api/teacher/students/${encodeURIComponent(id)}/export.xlsx`;
 
   $('letter-grid').replaceChildren(...ALPHABET.map((letter) => {
@@ -81,6 +83,7 @@ async function loadStudent(id) {
 
   const mark = (ok) => el('span', { class: ok ? 'yes' : 'no-text' }, ok ? '✓' : '✗');
   $('attempts').replaceChildren(...s.attempts.map((a) => el('tr', {},
+    el('td', {}, a.testDate || ''),
     el('td', {}, when(a.at)),
     el('td', {}, a.letter + (a.retry ? ' (after practice)' : '')),
     el('td', {}, mark(a.nameCorrect)),
