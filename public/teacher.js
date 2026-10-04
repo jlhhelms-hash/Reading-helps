@@ -40,8 +40,8 @@ async function loadList() {
     return;
   }
   list.replaceChildren(...students.map((s) => el('button', { class: 'student-row', type: 'button', onclick: () => loadStudent(s.id) },
-    el('strong', {}, s.name),
-    el('span', { class: 'meta' }, `🎥 ${s.videoCount}`),
+    el('strong', {}, s.last ? `${s.last}, ${s.first}` : s.first),
+    el('span', { class: 'meta' }, `⭐ ${s.stars} · 🎥 ${s.videoCount}`),
     el('span', {}, s.needsHelp.length ? `Needs help: ${s.needsHelp.join(' ')}` : 'No letters need help'),
     el('span', { class: 'meta' }, `${s.mastered.length + s.practiced.length} passed · ${when(s.lastActive)}`))));
 }
@@ -49,7 +49,8 @@ async function loadList() {
 async function loadStudent(id) {
   const s = await api(`students/${encodeURIComponent(id)}`);
   show('student');
-  $('student-name').textContent = s.name;
+  $('student-name').textContent = `${s.first} ${s.last} · ⭐ ${s.stars.length}`;
+  $('student-export').href = `api/teacher/students/${encodeURIComponent(id)}/export.xlsx`;
 
   $('letter-grid').replaceChildren(...ALPHABET.map((letter) => {
     const stats = s.letters[letter];

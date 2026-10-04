@@ -4,13 +4,15 @@
 import { ALPHABET, heardLetterName, heardLetterSound, shuffle } from './letters.js';
 import { ACTIVITIES, speak } from './activities.js';
 import { openCamera, recordClip, stopCamera, uploadClip } from './recorder.js';
+import { chime, confetti, flyStar, letterColor, renderStarChart } from './fun.js';
 
 const TRIES = 2;
 const RECORD_SECONDS = 5;
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 const $ = (id) => document.getElementById(id);
-const state = { student: '', adultMode: !Recognition, practiced: [], passed: 0 };
+// student is { first, last }. stars are the letters this student has ever earned.
+const state = { student: null, adultMode: !Recognition, practiced: [], passed: 0, stars: [], newStars: [] };
 
 function show(screen) {
   document.querySelectorAll('.screen').forEach((s) => { s.hidden = s.id !== `screen-${screen}`; });
@@ -141,16 +143,30 @@ async function checkLetter(letter) {
   return { ...got, heard: heardLog.join(' / '), checkedBy: 'app' };
 }
 
+// Saves the result. Resolves with { stars, newStar } from the server, or null if saving failed.
 async function saveAttempt(record) {
   try {
-    await fetch('api/attempts', {
+    const res = await fetch('api/attempts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ student: state.student, ...record }),
+      body: JSON.stringify({ ...state.student, ...record }),
     });
+    return res.ok ? await res.json() : null;
   } catch (err) {
     console.warn('Could not save result', err);
+    return null;
   }
+}
+
+function showStarCount() {
+  $('star-count').textContent = `⭐ ${state.stars.length}`;
+}
+
+function cheerOwl() {
+  const owl = $('owl');
+  owl.classList.remove('cheer');
+  void owl.offsetWidth;
+  owl.classList.add('cheer');
 }
 
 // Test one letter. Returns true when both the name and the sound were right.
@@ -158,20 +174,41 @@ async function testLetter(letter, retry) {
   show('letter');
   $('letter-upper').textContent = letter;
   $('letter-lower').textContent = letter.toLowerCase();
-  $('letter-card').classList.remove('pass');
+  const card = $('letter-card');
+  card.classList.remove('pass');
+  card.style.setProperty('--letter-color', letterColor(letter));
+  // Restart the pop-in animation for each new letter.
+  card.style.animation = 'none';
+  void card.offsetWidth;
+  card.style.animation = '';
   ['name', 'sound'].forEach((s) => { $(`step-${s}`).className = 'step'; });
 
   const result = await checkLetter(letter);
-  await saveAttempt({
+  const saved = await saveAttempt({
     letter, retry, nameCorrect: result.name, soundCorrect: result.sound,
     heard: result.heard, checkedBy: result.checkedBy,
   });
 
   const passed = result.name && result.sound;
   if (passed) {
-    $('letter-card').classList.add('pass');
-    setFeedback('You did it! 🎉', 'yay');
-    await speak('Great job!');
+    card.classList.add('pass');
+    cheerOwl();
+    if (saved?.newStar) {
+      state.stars = saved.stars;
+      state.newStars.push(letter);
+      $('prompt').textContent = `You earned a star for ${letter}!`;
+      setFeedback('⭐ Super job! ⭐', 'yay');
+      confetti();
+      chime();
+      await flyStar(card, $('star-count'));
+      showStarCount();
+      await speak(`You earned a star for ${letter}!`);
+    } else {
+      $('prompt').textContent = 'You did it! 🎉';
+      setFeedback(`You already have a star for ${letter}. Great job!`, 'yay');
+      confetti(40);
+      await speak('Great job!');
+    }
     await wait(800);
   } else {
     setFeedback(`This letter is ${letter}. Let's practice it together!`, 'oops');
@@ -234,10 +271,12 @@ async function practice(letter) {
 async function run(count) {
   state.practiced = [];
   state.passed = 0;
+  state.newStars = [];
   const letters = shuffle(ALPHABET).slice(0, count);
-  $('who').textContent = `👋 ${state.student}`;
+  $('who').textContent = `👋 ${state.student.first}`;
+  showStarCount();
   for (const [i, letter] of letters.entries()) {
-    $('progress').textContent = `${i + 1} / ${letters.length}`;
+    $('progress-fill').style.width = `${(i / letters.length) * 100}%`;
     if (await testLetter(letter, false)) {
       state.passed++;
       continue;
@@ -248,19 +287,74 @@ async function run(count) {
     // One more try after practice, then move on either way.
     if (await testLetter(letter, true)) state.passed++;
   }
-  show('done');
-  const practiced = state.practiced.length ? ` You practiced: ${state.practiced.join(', ')}.` : '';
-  $('done-summary').textContent = `You got ${state.passed} of ${letters.length} letters!${practiced}`;
-  speak('Great job!');
+  $('progress-fill').style.width = '100%';
+  showDone(letters.length);
 }
+
+function showDone(total) {
+  show('done');
+  const { first } = state.student;
+  const n = state.newStars.length;
+  $('done-summary').textContent = `You got ${state.passed} of ${total} letters, ${first}!`;
+  $('done-stars').textContent = n
+    ? `You earned ${n} new ${n === 1 ? 'star' : 'stars'} today! You have ${state.stars.length} of 26.`
+    : `You have ${state.stars.length} of 26 stars. Keep going!`;
+  renderStarChart($('done-chart'), state.stars, state.newStars);
+  confetti(state.newStars.length ? 120 : 60);
+  if (n) chime();
+  speak(n ? `Great job, ${first}! You earned ${n} new ${n === 1 ? 'star' : 'stars'}!` : `Great job, ${first}!`);
+}
+
+async function showWelcome() {
+  const { first } = state.student;
+  let returning = false;
+  try {
+    const params = new URLSearchParams(state.student);
+    const res = await fetch(`api/stars?${params}`);
+    ({ stars: state.stars, returning } = await res.json());
+  } catch {
+    state.stars = [];
+  }
+  show('welcome');
+  $('welcome-hello').textContent = returning ? `Welcome back, ${first}!` : `Hi, ${first}! Nice to meet you!`;
+  $('welcome-stars').textContent = state.stars.length
+    ? `You have ${state.stars.length} ${state.stars.length === 1 ? 'star' : 'stars'}. Let's earn more!`
+    : 'Say each letter and its sound to earn a star!';
+  renderStarChart($('welcome-chart'), state.stars);
+  speak(returning ? `Welcome back, ${first}!` : `Hi, ${first}! Let's earn some stars!`);
+}
+
+// "Letter Sounds" title with each letter in a different crayon color.
+$('title').replaceChildren(...[...'Letter Sounds'].map((ch, i) => {
+  const span = document.createElement('span');
+  if (ch === ' ') span.className = 'space';
+  else {
+    span.textContent = ch;
+    span.style.color = `var(--c${i % 6})`;
+    span.style.animationDelay = `${i * 0.08}s`;
+  }
+  span.setAttribute('aria-hidden', 'true');
+  return span;
+}));
+
+const tidy = (value) => value.replace(/\s+/g, ' ').trim();
 
 $('start-form').addEventListener('submit', (e) => {
   e.preventDefault();
-  state.student = $('student-name').value.replace(/\s+/g, ' ').trim();
-  if (!state.student) return;
-  run(Number($('letter-count').value));
+  const first = tidy($('first-name').value);
+  const last = tidy($('last-name').value);
+  if (!first || !last) return;
+  state.student = { first, last };
+  showWelcome();
 });
 
+$('begin-btn').addEventListener('click', () => run(Number($('letter-count').value)));
 $('again-btn').addEventListener('click', () => run(Number($('letter-count').value)));
+$('switch-btn').addEventListener('click', () => {
+  $('first-name').value = '';
+  $('last-name').value = '';
+  state.student = null;
+  show('start');
+});
 
 show('start');

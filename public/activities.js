@@ -3,6 +3,7 @@
 
 import { LETTERS, ALPHABET, shuffle } from './letters.js';
 import { openCamera, recordClip, stopCamera, uploadClip } from './recorder.js';
+import { confetti, letterColor } from './fun.js';
 
 const SAY_IT_SECONDS = 4;
 
@@ -56,7 +57,7 @@ function listenAndRepeat(box, letter) {
     const say = () => speak(`This is ${letter}. ${soundHint(letter)} Now you say it!`);
     box.replaceChildren(
       el('h2', {}, 'Listen and say it'),
-      el('div', { class: 'letter-card small-card' }, letter + letter.toLowerCase()),
+      el('div', { class: 'letter-card small-card', style: `--letter-color: ${letterColor(letter)}` }, letter + letter.toLowerCase()),
       el('div', { class: 'pictures' }, ...words.map(([w, emoji]) =>
         el('button', { class: 'picture', type: 'button', onclick: () => speak(w) }, el('span', { class: 'emoji' }, emoji), el('span', {}, w)))),
       el('p', { class: 'prompt' }, 'Say the sound 3 times, like the words.'),
@@ -126,6 +127,7 @@ function sayIt(box, letter, { student }) {
       try {
         await uploadClip(student, letter, 'practice', clip);
         status.textContent = 'Saved for your teacher! ⭐';
+        confetti(30);
       } catch (err) {
         console.warn('Upload failed', err);
         status.textContent = "That didn't save, but great job!";
@@ -174,7 +176,10 @@ function findTheLetter(box, letter) {
           tile.classList.add('found');
           left--;
           status.textContent = left ? `Yes! Find ${left} more.` : 'You found them all! ⭐';
-          if (!left) setTimeout(resolve, 1200);
+          if (!left) {
+            confetti(40);
+            setTimeout(resolve, 1400);
+          }
         } else {
           tile.classList.remove('shake');
           void tile.offsetWidth;
@@ -212,6 +217,7 @@ async function pickThePicture(box, letter) {
             if (w === answer) {
               btn.classList.add('found');
               status.textContent = `Yes! ${w} ${where} with ${letter}. ⭐`;
+              confetti(30);
               await speak(`Yes! ${w}.`);
               setTimeout(resolve, 600);
             } else {
@@ -256,7 +262,8 @@ function traceTheLetter(box, letter) {
     canvas.addEventListener('pointermove', (e) => {
       if (!last) return;
       const p = point(e);
-      ctx.strokeStyle = css.getPropertyValue('--accent').trim() || '#e4572e';
+      const colorVar = letterColor(letter).slice(4, -1); // "var(--c3)" -> "--c3"
+      ctx.strokeStyle = css.getPropertyValue(colorVar).trim() || '#2f6fed';
       ctx.lineWidth = 18;
       ctx.lineCap = 'round';
       ctx.beginPath();

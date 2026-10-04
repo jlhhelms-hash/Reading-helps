@@ -8,6 +8,8 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { buildXlsx } from './xlsx.js';
+import { ALPHABET } from './public/letters.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(ROOT, 'public');
@@ -35,11 +37,25 @@ const TYPES = {
 // "Maya R." -> "maya-r". Used as the folder name for a student.
 export function studentId(name) {
   return String(name).toLowerCase().normalize('NFKD')
-    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 90);
 }
 
 function cleanName(name) {
-  return String(name || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+  return String(name || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+}
+
+// Reads first/last name from a request. Older data used one "student" field.
+function studentFromInput(input) {
+  let first = cleanName(input.first);
+  let last = cleanName(input.last);
+  if (!first && input.student) [first, last] = splitName(input.student);
+  if (!first) throw Object.assign(new Error('Student first name is required'), { status: 400 });
+  return { first, last, name: last ? `${first} ${last}` : first };
+}
+
+function splitName(full) {
+  const words = cleanName(full).split(' ');
+  return words.length > 1 ? [words.slice(0, -1).join(' '), words.at(-1)] : [words[0] || '', ''];
 }
 
 function isLetter(value) {
@@ -49,6 +65,15 @@ function isLetter(value) {
 function sendJson(res, status, body, headers = {}) {
   res.writeHead(status, { 'Content-Type': 'application/json', ...headers });
   res.end(JSON.stringify(body));
+}
+
+function sendXlsx(res, filename, buffer) {
+  res.writeHead(200, {
+    'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'Content-Disposition': `attachment; filename="${filename.replace(/[^\w ,.-]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    'Content-Length': buffer.length,
+  });
+  res.end(buffer);
 }
 
 async function readBody(req, limit) {
@@ -71,14 +96,14 @@ async function readJson(req) {
   }
 }
 
-async function ensureStudent(name) {
-  const id = studentId(name);
+async function ensureStudent(student) {
+  const id = studentId(student.name);
   if (!id) throw Object.assign(new Error('Student name is required'), { status: 400 });
   const dir = path.join(STUDENTS_DIR, id);
   await fsp.mkdir(path.join(dir, 'videos'), { recursive: true });
   const profile = path.join(dir, 'profile.json');
   if (!fs.existsSync(profile)) {
-    await fsp.writeFile(profile, JSON.stringify({ name, created: new Date().toISOString() }, null, 2));
+    await fsp.writeFile(profile, JSON.stringify({ ...student, created: new Date().toISOString() }, null, 2));
   }
   return { id, dir };
 }
@@ -104,21 +129,91 @@ async function listVideos(dir) {
 }
 
 // Per-letter totals for the teacher: how often each letter was tried and missed.
+// A star is earned the first time a letter is passed, and is never taken away.
 function summarize(attempts) {
   const letters = {};
   for (const a of attempts) {
-    const s = (letters[a.letter] ||= { tries: 0, nameMissed: 0, soundMissed: 0, lastPassed: false, everMissed: false });
+    const s = (letters[a.letter] ||= { tries: 0, nameMissed: 0, soundMissed: 0, lastPassed: false, everMissed: false, everPassed: false });
     s.tries++;
     if (!a.nameCorrect) s.nameMissed++;
     if (!a.soundCorrect) s.soundMissed++;
     s.lastPassed = Boolean(a.nameCorrect && a.soundCorrect);
-    if (!s.lastPassed) s.everMissed = true;
+    if (s.lastPassed) s.everPassed = true;
+    else s.everMissed = true;
   }
   const all = Object.keys(letters).sort();
   const needsHelp = all.filter((l) => !letters[l].lastPassed);
   const practiced = all.filter((l) => letters[l].lastPassed && letters[l].everMissed);
   const mastered = all.filter((l) => letters[l].lastPassed && !letters[l].everMissed);
-  return { letters, needsHelp, practiced, mastered };
+  const stars = all.filter((l) => letters[l].everPassed);
+  return { letters, needsHelp, practiced, mastered, stars };
+}
+
+async function loadStudent(id) {
+  const dir = studentDirFromParam(id);
+  if (!dir) return null;
+  const profile = JSON.parse(await fsp.readFile(path.join(dir, 'profile.json'), 'utf8').catch(() => '{}'));
+  const [first, last] = profile.first ? [profile.first, profile.last || ''] : splitName(profile.name || id);
+  const attempts = await readAttempts(dir);
+  return {
+    id, first, last, name: profile.name || id, created: profile.created,
+    attempts, videos: await listVideos(dir), ...summarize(attempts),
+  };
+}
+
+const byLastName = (a, b) =>
+  a.last.localeCompare(b.last, undefined, { sensitivity: 'base' }) ||
+  a.first.localeCompare(b.first, undefined, { sensitivity: 'base' });
+
+async function loadAllStudents() {
+  await fsp.mkdir(STUDENTS_DIR, { recursive: true });
+  const students = [];
+  for (const id of await fsp.readdir(STUDENTS_DIR)) {
+    const student = await loadStudent(id);
+    if (student) students.push(student);
+  }
+  return students.sort(byLastName);
+}
+
+function localTime(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// Excel workbook of results, sorted by last name: a summary, an A-Z grid, and every try.
+function resultsWorkbook(students) {
+  const yesNo = (ok) => ({ v: ok ? 'Yes' : 'No', style: ok ? 'good' : 'help' });
+  const summary = [
+    ['Last name', 'First name', 'Stars', 'Passed first time', 'Passed after practice', 'Needs help', 'Letters tried', 'Videos', 'Last active'],
+    ...students.map((s) => [
+      s.last, s.first, s.stars.length, s.mastered.join(' '), s.practiced.join(' '), s.needsHelp.join(' '),
+      Object.keys(s.letters).length, s.videos.length, localTime(s.attempts.at(-1)?.at),
+    ]),
+  ];
+  const grid = [
+    ['Last name', 'First name', ...ALPHABET],
+    ...students.map((s) => [s.last, s.first, ...ALPHABET.map((l) => {
+      const stats = s.letters[l];
+      if (!stats) return '';
+      if (!stats.lastPassed) return { v: 'Help', style: 'help' };
+      return stats.everMissed ? { v: 'Practiced', style: 'practiced' } : { v: 'Passed', style: 'good' };
+    })]),
+  ];
+  const tries = [
+    ['Last name', 'First name', 'When', 'Letter', 'Name right', 'Sound right', 'After practice', 'Checked by', 'App heard'],
+    ...students.flatMap((s) => s.attempts.map((a) => [
+      s.last, s.first, localTime(a.at), a.letter, yesNo(a.nameCorrect), yesNo(a.soundCorrect),
+      a.retry ? 'Yes' : '', a.checkedBy === 'adult' ? 'Adult' : 'App',
+      a.heard ?? [a.heardName, a.heardSound].filter(Boolean).join(' / '),
+    ])),
+  ];
+  return buildXlsx([
+    { name: 'Summary', rows: summary, widths: [16, 14, 7, 28, 22, 22, 13, 8, 17] },
+    { name: 'Letters A-Z', rows: grid, widths: [16, 14, ...ALPHABET.map(() => 9)] },
+    { name: 'All tries', rows: tries, widths: [16, 14, 17, 7, 11, 11, 13, 11, 30] },
+  ]);
 }
 
 function isTeacher(req) {
@@ -127,7 +222,7 @@ function isTeacher(req) {
 }
 
 function studentDirFromParam(id) {
-  if (!/^[a-z0-9-]{1,60}$/.test(id)) return null;
+  if (!/^[a-z0-9-]{1,90}$/.test(id)) return null;
   const dir = path.join(STUDENTS_DIR, id);
   return fs.existsSync(dir) ? dir : null;
 }
@@ -152,13 +247,21 @@ async function serveFile(req, res, file, type) {
 
 async function handleApi(req, res, url) {
   const { pathname } = url;
+  const query = Object.fromEntries(url.searchParams);
 
-  // Student: save one letter result.
+  // Student: the stars they have earned so far.
+  if (req.method === 'GET' && pathname === '/api/stars') {
+    const student = studentFromInput(query);
+    const found = await loadStudent(studentId(student.name));
+    return sendJson(res, 200, { stars: found ? found.stars : [], returning: Boolean(found) });
+  }
+
+  // Student: save one letter result. Replies with their stars and whether this one is new.
   if (req.method === 'POST' && pathname === '/api/attempts') {
     const body = await readJson(req);
-    const name = cleanName(body.student);
     if (!isLetter(body.letter)) return sendJson(res, 400, { error: 'Bad letter' });
-    const { dir } = await ensureStudent(name);
+    const { id, dir } = await ensureStudent(studentFromInput(body));
+    const before = (await loadStudent(id)).stars;
     const record = {
       letter: body.letter,
       nameCorrect: Boolean(body.nameCorrect),
@@ -169,21 +272,24 @@ async function handleApi(req, res, url) {
       at: new Date().toISOString(),
     };
     await fsp.appendFile(path.join(dir, 'attempts.jsonl'), JSON.stringify(record) + '\n');
-    return sendJson(res, 201, { ok: true });
+    const passed = record.nameCorrect && record.soundCorrect;
+    const newStar = passed && !before.includes(record.letter);
+    const stars = newStar ? [...before, record.letter].sort() : before;
+    return sendJson(res, 201, { ok: true, stars, newStar });
   }
 
-  // Student: save a practice video. The body is the raw video file.
+  // Student: save a video. The body is the raw video file.
   if (req.method === 'POST' && pathname === '/api/recordings') {
-    const name = cleanName(url.searchParams.get('student'));
-    const letter = url.searchParams.get('letter');
+    const student = studentFromInput(query);
+    const letter = query.letter;
     if (!isLetter(letter)) return sendJson(res, 400, { error: 'Bad letter' });
-    const practice = url.searchParams.get('kind') === 'practice';
+    const practice = query.kind === 'practice';
     const type = req.headers['content-type'] || '';
     const ext = type.startsWith('video/mp4') ? 'mp4' : type.startsWith('video/webm') ? 'webm' : null;
     if (!ext) return sendJson(res, 415, { error: 'Video must be webm or mp4' });
     const video = await readBody(req, MAX_VIDEO_BYTES);
     if (!video.length) return sendJson(res, 400, { error: 'Empty video' });
-    const { dir } = await ensureStudent(name);
+    const { dir } = await ensureStudent(student);
     const file = `${letter}-${practice ? 'practice-' : ''}${Date.now()}.${ext}`;
     await fsp.writeFile(path.join(dir, 'videos', file), video);
     return sendJson(res, 201, { ok: true, file });
@@ -211,35 +317,32 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === 'GET' && pathname === '/api/teacher/students') {
-    await fsp.mkdir(STUDENTS_DIR, { recursive: true });
-    const ids = await fsp.readdir(STUDENTS_DIR);
-    const students = [];
-    for (const id of ids) {
-      const dir = studentDirFromParam(id);
-      if (!dir) continue;
-      const profile = JSON.parse(await fsp.readFile(path.join(dir, 'profile.json'), 'utf8').catch(() => '{}'));
-      const attempts = await readAttempts(dir);
-      const { needsHelp, practiced, mastered } = summarize(attempts);
-      const videos = await listVideos(dir);
-      students.push({
-        id, name: profile.name || id, needsHelp, practiced, mastered, videoCount: videos.length,
-        lastActive: attempts.at(-1)?.at || profile.created || null,
-      });
-    }
-    students.sort((a, b) => a.name.localeCompare(b.name));
+    const students = (await loadAllStudents()).map((s) => ({
+      id: s.id, name: s.name, first: s.first, last: s.last,
+      needsHelp: s.needsHelp, practiced: s.practiced, mastered: s.mastered, stars: s.stars.length,
+      videoCount: s.videos.length, lastActive: s.attempts.at(-1)?.at || s.created || null,
+    }));
     return sendJson(res, 200, { students });
+  }
+
+  if (req.method === 'GET' && pathname === '/api/teacher/export.xlsx') {
+    const date = localTime(new Date().toISOString()).slice(0, 10);
+    return sendXlsx(res, `Letter Sounds - class results ${date}.xlsx`, resultsWorkbook(await loadAllStudents()));
+  }
+
+  const exportMatch = /^\/api\/teacher\/students\/([^/]+)\/export\.xlsx$/.exec(pathname);
+  if (req.method === 'GET' && exportMatch) {
+    const student = await loadStudent(exportMatch[1]);
+    if (!student) return sendJson(res, 404, { error: 'No such student' });
+    const label = student.last ? `${student.last}, ${student.first}` : student.first;
+    return sendXlsx(res, `${label} - Letter Sounds.xlsx`, resultsWorkbook([student]));
   }
 
   const studentMatch = /^\/api\/teacher\/students\/([^/]+)$/.exec(pathname);
   if (req.method === 'GET' && studentMatch) {
-    const dir = studentDirFromParam(studentMatch[1]);
-    if (!dir) return sendJson(res, 404, { error: 'No such student' });
-    const profile = JSON.parse(await fsp.readFile(path.join(dir, 'profile.json'), 'utf8').catch(() => '{}'));
-    const attempts = await readAttempts(dir);
-    return sendJson(res, 200, {
-      id: studentMatch[1], name: profile.name, ...summarize(attempts),
-      attempts: attempts.slice(-200).reverse(), videos: await listVideos(dir),
-    });
+    const s = await loadStudent(studentMatch[1]);
+    if (!s) return sendJson(res, 404, { error: 'No such student' });
+    return sendJson(res, 200, { ...s, attempts: s.attempts.slice(-200).reverse() });
   }
 
   const videoMatch = /^\/api\/teacher\/videos\/([^/]+)\/([^/]+)$/.exec(pathname);

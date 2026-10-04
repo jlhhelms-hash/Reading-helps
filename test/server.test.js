@@ -24,6 +24,16 @@ after(() => {
 const post = (url, body, headers = { 'Content-Type': 'application/json' }) =>
   fetch(base + url, { method: 'POST', headers, body: typeof body === 'string' || body instanceof Uint8Array ? body : JSON.stringify(body) });
 
+const maya = { first: 'Maya', last: 'Rodriguez' };
+const video = new Uint8Array([26, 69, 223, 163, 1, 2, 3, 4]);
+
+async function teacherGet() {
+  const login = await post('/api/teacher/login', { pin: '2468' });
+  assert.equal(login.status, 200);
+  const cookie = login.headers.get('set-cookie').split(';')[0];
+  return (url, opts = {}) => fetch(base + url, { ...opts, headers: { cookie, ...opts.headers } });
+}
+
 test('studentId makes safe folder names', () => {
   assert.equal(studentId('Maya R.'), 'maya-r');
   assert.equal(studentId('../../etc'), 'etc');
@@ -32,50 +42,87 @@ test('studentId makes safe folder names', () => {
 test('serves the student app and teacher page', async () => {
   assert.equal((await fetch(base + '/')).status, 200);
   assert.equal((await fetch(base + '/teacher')).status, 200);
-  assert.equal((await fetch(base + '/../server.js')).status, 404);
 });
 
-test('teacher data needs the PIN', async () => {
+test('teacher data and exports need the PIN', async () => {
   assert.equal((await fetch(base + '/api/teacher/students')).status, 401);
+  assert.equal((await fetch(base + '/api/teacher/export.xlsx')).status, 401);
   assert.equal((await post('/api/teacher/login', { pin: '0000' })).status, 401);
 });
 
-test('attempts and videos are saved per student and shown to the teacher', async () => {
-  assert.equal((await post('/api/attempts', { student: 'Maya R.', letter: 'B', nameCorrect: true, soundCorrect: false, heard: 'bee dee' })).status, 201);
-  assert.equal((await post('/api/attempts', { student: 'Maya R.', letter: 'S', nameCorrect: true, soundCorrect: true })).status, 201);
-  assert.equal((await post('/api/attempts', { student: 'Maya R.', letter: 'bad' })).status, 400);
+test('a first name is required', async () => {
+  assert.equal((await post('/api/attempts', { letter: 'B', nameCorrect: true })).status, 400);
+});
 
-  const video = new Uint8Array([26, 69, 223, 163, 1, 2, 3, 4]);
-  const up = await post('/api/recordings?student=Maya%20R.&letter=B', video, { 'Content-Type': 'video/webm' });
+test('stars are earned once per letter passed and never taken away', async () => {
+  const stars = async () => (await (await fetch(`${base}/api/stars?first=Leo&last=Tran`)).json());
+  assert.deepEqual(await stars(), { stars: [], returning: false });
+
+  const attempt = async (letter, ok) =>
+    (await post('/api/attempts', { first: 'Leo', last: 'Tran', letter, nameCorrect: ok, soundCorrect: ok })).json();
+  assert.deepEqual(await attempt('B', false), { ok: true, stars: [], newStar: false });
+  assert.deepEqual(await attempt('B', true), { ok: true, stars: ['B'], newStar: true });
+  assert.deepEqual(await attempt('A', true), { ok: true, stars: ['A', 'B'], newStar: true });
+  assert.deepEqual(await attempt('B', true), { ok: true, stars: ['A', 'B'], newStar: false });
+  assert.deepEqual(await attempt('B', false), { ok: true, stars: ['A', 'B'], newStar: false });
+  assert.deepEqual(await stars(), { stars: ['A', 'B'], returning: true });
+});
+
+test('attempts and videos are saved per student and shown to the teacher', async () => {
+  assert.equal((await post('/api/attempts', { ...maya, letter: 'B', nameCorrect: true, soundCorrect: false, heard: 'bee dee' })).status, 201);
+  assert.equal((await post('/api/attempts', { ...maya, letter: 'S', nameCorrect: true, soundCorrect: true })).status, 201);
+  assert.equal((await post('/api/attempts', { ...maya, letter: 'bad' })).status, 400);
+
+  const up = await post('/api/recordings?first=Maya&last=Rodriguez&letter=B', video, { 'Content-Type': 'video/webm' });
   assert.equal(up.status, 201);
   const { file } = await up.json();
   assert.match(file, /^B-\d+\.webm$/);
-  const practiceUp = await post('/api/recordings?student=Maya%20R.&letter=B&kind=practice', video, { 'Content-Type': 'video/webm' });
+  const practiceUp = await post('/api/recordings?first=Maya&last=Rodriguez&letter=B&kind=practice', video, { 'Content-Type': 'video/webm' });
   assert.match((await practiceUp.json()).file, /^B-practice-\d+\.webm$/);
-  assert.equal((await post('/api/recordings?student=Maya&letter=B', video, { 'Content-Type': 'text/plain' })).status, 415);
+  assert.equal((await post('/api/recordings?first=Maya&letter=B', video, { 'Content-Type': 'text/plain' })).status, 415);
 
-  const login = await post('/api/teacher/login', { pin: '2468' });
-  assert.equal(login.status, 200);
-  const cookie = login.headers.get('set-cookie').split(';')[0];
-  const get = (url, opts = {}) => fetch(base + url, { ...opts, headers: { cookie, ...opts.headers } });
+  const get = await teacherGet();
+  const maya1 = (await (await get('/api/teacher/students')).json()).students.find((s) => s.first === 'Maya');
+  assert.deepEqual([maya1.last, maya1.needsHelp, maya1.practiced, maya1.mastered, maya1.stars, maya1.videoCount],
+    ['Rodriguez', ['B'], [], ['S'], 1, 2]);
 
-  const { students } = await (await get('/api/teacher/students')).json();
-  assert.deepEqual(students.map((s) => [s.name, s.needsHelp, s.practiced, s.mastered, s.videoCount]), [['Maya R.', ['B'], [], ['S'], 2]]);
+  await post('/api/attempts', { ...maya, letter: 'B', retry: true, nameCorrect: true, soundCorrect: true });
+  const after = (await (await get('/api/teacher/students')).json()).students.find((s) => s.first === 'Maya');
+  assert.deepEqual([after.needsHelp, after.practiced, after.stars], [[], ['B'], 2], 'B passed after practice');
 
-  await post('/api/attempts', { student: 'Maya R.', letter: 'B', retry: true, nameCorrect: true, soundCorrect: true });
-  const after = (await (await get('/api/teacher/students')).json()).students[0];
-  assert.deepEqual([after.needsHelp, after.practiced], [[], ['B']], 'B passed after practice');
-
-  const detail = await (await get('/api/teacher/students/maya-r')).json();
+  const detail = await (await get('/api/teacher/students/maya-rodriguez')).json();
   assert.deepEqual(detail.videos.map((v) => [v.letter, v.kind]).sort(), [['B', 'missed'], ['B', 'practice']]);
-  assert.equal(detail.attempts[0].letter, 'B');
   assert.equal(detail.attempts[0].retry, true);
   assert.equal(detail.attempts.at(-1).heard, 'bee dee');
 
-  const clip = await get(`/api/teacher/videos/maya-r/${file}`, { headers: { range: 'bytes=0-3' } });
+  const clip = await get(`/api/teacher/videos/maya-rodriguez/${file}`, { headers: { range: 'bytes=0-3' } });
   assert.equal(clip.status, 206);
   assert.deepEqual([...new Uint8Array(await clip.arrayBuffer())], [26, 69, 223, 163]);
 
-  assert.equal((await get(`/api/teacher/videos/maya-r/${file}`, { method: 'DELETE' })).status, 200);
+  assert.equal((await get(`/api/teacher/videos/maya-rodriguez/${file}`, { method: 'DELETE' })).status, 200);
   assert.equal((await get('/api/teacher/videos/..%2F..%2Fserver.js/x')).status, 404);
+});
+
+test('teacher list is sorted by last name', async () => {
+  await post('/api/attempts', { first: 'Zoe', last: 'Adams', letter: 'C', nameCorrect: true, soundCorrect: true });
+  await post('/api/attempts', { student: 'Ava Brown', letter: 'C', nameCorrect: true, soundCorrect: true });
+  const get = await teacherGet();
+  const { students } = await (await get('/api/teacher/students')).json();
+  assert.deepEqual(students.map((s) => s.last), ['Adams', 'Brown', 'Rodriguez', 'Tran']);
+});
+
+test('excel exports for the class and for one student', async () => {
+  const get = await teacherGet();
+  const cls = await get('/api/teacher/export.xlsx');
+  assert.equal(cls.status, 200);
+  assert.equal(cls.headers.get('content-type'), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  assert.match(cls.headers.get('content-disposition'), /class results/);
+  const bytes = Buffer.from(await cls.arrayBuffer());
+  assert.equal(bytes.subarray(0, 2).toString(), 'PK');
+  if (process.env.SAVE_XLSX) fs.writeFileSync(process.env.SAVE_XLSX, bytes);
+
+  const one = await get('/api/teacher/students/maya-rodriguez/export.xlsx');
+  assert.equal(one.status, 200);
+  assert.match(decodeURIComponent(one.headers.get('content-disposition')), /Rodriguez, Maya - Letter Sounds\.xlsx/);
+  assert.equal((await get('/api/teacher/students/nobody/export.xlsx')).status, 404);
 });

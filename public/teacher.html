@@ -24,16 +24,19 @@
       <div class="teacher-head">
         <h1>Students</h1>
         <div class="row">
+          <a class="plain-btn excel" href="api/teacher/export.xlsx" download>⬇ Export class to Excel</a>
           <button class="plain-btn" id="refresh" type="button">↻ Refresh</button>
           <button class="plain-btn" id="logout" type="button">Log out</button>
         </div>
       </div>
+      <p class="small">Sorted by last name. The Excel file has three sheets: a summary, an A–Z letter grid, and every try.</p>
       <div class="student-list" id="student-list"></div>
     </section>
 
     <section id="screen-student" class="screen teacher" hidden>
       <div class="teacher-head">
         <button class="plain-btn" id="back" type="button">← All students</button>
+        <a class="plain-btn excel" id="student-export" href="#" download>⬇ Export to Excel</a>
       </div>
       <h1 id="student-name"></h1>
       <h2>Letters</h2>
