@@ -19,6 +19,10 @@ const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 
 const sessions = new Set();
 
+// Video files are named <letter>-<time>.webm for a missed letter and
+// <letter>-practice-<time>.webm for the practice "Say it" step.
+const VIDEO_FILE = /^([A-Z])-(practice-)?(\d+)\.(webm|mp4)$/;
+
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -91,10 +95,9 @@ async function readAttempts(dir) {
 async function listVideos(dir) {
   try {
     const files = await fsp.readdir(path.join(dir, 'videos'));
-    return files.filter((f) => /^[A-Z]-\d+\.(webm|mp4)$/.test(f)).sort().reverse().map((file) => {
-      const [letter, stamp] = file.split(/[-.]/);
-      return { file, letter, recorded: new Date(Number(stamp)).toISOString() };
-    });
+    return files.map((file) => VIDEO_FILE.exec(file)).filter(Boolean).map(([file, letter, practice, stamp]) => ({
+      file, letter, kind: practice ? 'practice' : 'missed', recorded: new Date(Number(stamp)).toISOString(),
+    })).sort((a, b) => b.recorded.localeCompare(a.recorded));
   } catch {
     return [];
   }
@@ -160,8 +163,7 @@ async function handleApi(req, res, url) {
       letter: body.letter,
       nameCorrect: Boolean(body.nameCorrect),
       soundCorrect: Boolean(body.soundCorrect),
-      heardName: String(body.heardName || '').slice(0, 200),
-      heardSound: String(body.heardSound || '').slice(0, 200),
+      heard: String(body.heard || '').slice(0, 300),
       retry: Boolean(body.retry),
       checkedBy: body.checkedBy === 'adult' ? 'adult' : 'app',
       at: new Date().toISOString(),
@@ -175,13 +177,14 @@ async function handleApi(req, res, url) {
     const name = cleanName(url.searchParams.get('student'));
     const letter = url.searchParams.get('letter');
     if (!isLetter(letter)) return sendJson(res, 400, { error: 'Bad letter' });
+    const practice = url.searchParams.get('kind') === 'practice';
     const type = req.headers['content-type'] || '';
     const ext = type.startsWith('video/mp4') ? 'mp4' : type.startsWith('video/webm') ? 'webm' : null;
     if (!ext) return sendJson(res, 415, { error: 'Video must be webm or mp4' });
     const video = await readBody(req, MAX_VIDEO_BYTES);
     if (!video.length) return sendJson(res, 400, { error: 'Empty video' });
     const { dir } = await ensureStudent(name);
-    const file = `${letter}-${Date.now()}.${ext}`;
+    const file = `${letter}-${practice ? 'practice-' : ''}${Date.now()}.${ext}`;
     await fsp.writeFile(path.join(dir, 'videos', file), video);
     return sendJson(res, 201, { ok: true, file });
   }
@@ -239,12 +242,12 @@ async function handleApi(req, res, url) {
     });
   }
 
-  const videoMatch = /^\/api\/teacher\/videos\/([^/]+)\/([A-Z]-\d+\.(webm|mp4))$/.exec(pathname);
-  if (videoMatch) {
+  const videoMatch = /^\/api\/teacher\/videos\/([^/]+)\/([^/]+)$/.exec(pathname);
+  if (videoMatch && VIDEO_FILE.test(videoMatch[2])) {
     const dir = studentDirFromParam(videoMatch[1]);
     const file = dir && path.join(dir, 'videos', videoMatch[2]);
     if (!file || !fs.existsSync(file)) return sendJson(res, 404, { error: 'No such video' });
-    if (req.method === 'GET') return serveFile(req, res, file, TYPES['.' + videoMatch[3]]);
+    if (req.method === 'GET') return serveFile(req, res, file, TYPES[path.extname(file)]);
     if (req.method === 'DELETE') {
       await fsp.unlink(file);
       return sendJson(res, 200, { ok: true });

@@ -3,17 +3,18 @@
 A web app that checks whether elementary students know each letter's **name** and **sound**.
 
 1. The app shows a letter (big and small, like **Bb**).
-2. The student taps the microphone and says the letter's name, then taps again and says its sound.
+2. The student taps **🎤 Say it** and says the letter's name and its sound together ("B… buh"). If they only get one part right, the app asks for the other part. They get 2 tries, and a part they got right on either try counts.
 3. If both are right, the student moves on to the next random letter.
 4. If either is wrong, the app records a short video (5 seconds) of the student saying the letter and its sound. The video is saved under the student's name for the teacher.
-5. The student then does four practice activities for that letter:
+5. The student then does five practice activities for that letter:
    - **Listen and say it:** hear the letter and its sound, with pictures.
+   - **Say it!:** tap **🎤 Say it** to film themselves saying the letter and its sound. The clip plays back so they hear themselves. They can redo it, and when they tap **Next** the last clip is saved for the teacher.
    - **Find the letter:** tap every big and small copy of the letter among look-alike letters.
    - **Pick the picture:** choose the picture that starts with the letter's sound.
    - **Trace it:** trace the big and small letter with a finger or mouse.
 6. After practice, the student tries the letter one more time, then moves on.
 
-The **teacher page** (`/teacher`, protected by a PIN) shows each student's letters in color (passed, passed after practice, needs help, not tried yet), their videos, and what the app heard on each try.
+The **teacher page** (`/teacher`, protected by a PIN) shows each student's letters in color (passed, passed after practice, needs help, not tried yet), their videos (each marked **missed** or **practice**), and what the app heard on each try.
 
 ## Run it on your computer
 
@@ -42,6 +43,7 @@ Use **Chrome**, **Edge** or **Safari**. The first time, the browser asks to use 
 - **Speech recognition in Chrome needs the internet.** Chrome sends the audio to Google to turn it into words.
 - **Camera and microphone only work on `localhost` or an `https://` address.** Running on one classroom computer works as-is. Letting student devices across the school network connect needs HTTPS hosting.
 - **Student videos are private data.** They are saved only on the computer running the app, in `data/students/<name>/videos/`. That folder is never uploaded to GitHub (see `.gitignore`). Check your school or district's rules for recording students before you use this with a class.
+- **Videos are saved on the computer running the app, in `data/students/<name>/videos/`.** Missed-letter clips are named like `B-<time>.webm` and practice clips like `B-practice-<time>.webm`.
 - Students are kept apart by name, so two students named "Sam" share a folder. Use a last initial, like "Sam P."
 
 ## For developers
@@ -55,6 +57,7 @@ npm test        # letter-matching and server tests
 | `server.js` | Small web server with no packages to install: saves results and videos, runs the teacher login |
 | `public/letters.js` | Letter data and the name/sound matching rules |
 | `public/app.js` | Student flow: test, record, practice, retry |
-| `public/activities.js` | The four practice activities |
+| `public/activities.js` | The five practice activities |
+| `public/recorder.js` | Camera recording and video upload |
 | `public/teacher.html`, `public/teacher.js` | Teacher page |
 | `data/` | Student results and videos (created when the app runs, not saved to GitHub) |

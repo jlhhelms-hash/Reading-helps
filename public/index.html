@@ -40,10 +40,10 @@
         <span class="step" id="step-name">Name</span>
         <span class="step" id="step-sound">Sound</span>
       </div>
-      <button id="mic-btn" class="mic-btn" type="button" aria-label="Tap and talk">🎤</button>
+      <button id="say-btn" class="say-btn" type="button">🎤 Say it</button>
       <p class="feedback" id="feedback" aria-live="polite"></p>
       <div id="adult-check" class="adult-check" hidden>
-        <p class="small">Grown-up: did they say it right?</p>
+        <p class="small" id="adult-question"></p>
         <button type="button" class="big-btn ok" id="adult-yes">✓ Yes</button>
         <button type="button" class="big-btn no" id="adult-no">✗ Not yet</button>
       </div>
@@ -53,7 +53,7 @@
     <section id="screen-record" class="screen" hidden>
       <h2>Let's record you!</h2>
       <p class="prompt" id="record-prompt"></p>
-      <video id="camera" autoplay muted playsinline></video>
+      <video id="camera" class="camera live" autoplay muted playsinline></video>
       <p class="countdown" id="countdown" aria-live="polite"></p>
       <button id="record-btn" class="big-btn" type="button">🔴 Start recording</button>
       <p class="feedback" id="record-status" aria-live="polite"></p>

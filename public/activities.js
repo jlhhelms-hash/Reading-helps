@@ -2,6 +2,9 @@
 // Each activity draws itself into `box` and resolves when the student finishes.
 
 import { LETTERS, ALPHABET, shuffle } from './letters.js';
+import { openCamera, recordClip, stopCamera, uploadClip } from './recorder.js';
+
+const SAY_IT_SECONDS = 4;
 
 // Letters that are easy to mix up, so "find the letter" is real practice.
 const LOOKALIKES = {
@@ -65,7 +68,96 @@ function listenAndRepeat(box, letter) {
   });
 }
 
-// 2. Tap every copy of the letter (big and small) among look-alikes.
+// 2. Say it on camera, hear yourself, and save the clip for the teacher.
+function sayIt(box, letter, { student }) {
+  return new Promise((resolve) => {
+    const video = el('video', { class: 'camera', autoplay: '', playsinline: '' });
+    video.muted = true;
+    const countdown = el('p', { class: 'countdown', 'aria-live': 'polite' });
+    const status = el('p', { class: 'feedback', 'aria-live': 'polite' });
+    const sayBtn = el('button', { class: 'say-btn', type: 'button' }, '🎤 Say it');
+    const nextBtn = el('button', { class: 'big-btn ok', type: 'button', hidden: '' }, 'Next ➜');
+    let stream = null;
+    let clip = null;
+    let clipUrl = null;
+
+    function finish() {
+      stopCamera(stream);
+      if (clipUrl) URL.revokeObjectURL(clipUrl);
+      resolve();
+    }
+
+    async function showCamera() {
+      video.src = '';
+      video.srcObject = stream;
+      video.classList.add('live');
+      video.muted = true;
+      video.controls = false;
+      await video.play().catch(() => {});
+    }
+
+    sayBtn.addEventListener('click', async () => {
+      sayBtn.disabled = true;
+      nextBtn.hidden = true;
+      status.textContent = '';
+      window.speechSynthesis?.cancel();
+      await showCamera();
+      clip = await recordClip(stream, SAY_IT_SECONDS, (text) => { countdown.textContent = text; });
+      // Play it back so the student hears themselves.
+      if (clipUrl) URL.revokeObjectURL(clipUrl);
+      clipUrl = URL.createObjectURL(clip);
+      video.srcObject = null;
+      video.src = clipUrl;
+      video.classList.remove('live');
+      video.muted = false;
+      video.controls = true;
+      video.play().catch(() => {});
+      status.textContent = 'Listen to you! 👂';
+      sayBtn.textContent = '🎤 Say it again';
+      sayBtn.disabled = false;
+      nextBtn.hidden = false;
+    });
+
+    nextBtn.addEventListener('click', async () => {
+      if (!clip) return finish();
+      nextBtn.disabled = true;
+      sayBtn.disabled = true;
+      status.textContent = 'Saving…';
+      try {
+        await uploadClip(student, letter, 'practice', clip);
+        status.textContent = 'Saved for your teacher! ⭐';
+      } catch (err) {
+        console.warn('Upload failed', err);
+        status.textContent = "That didn't save, but great job!";
+      }
+      setTimeout(finish, 1200);
+    });
+
+    box.replaceChildren(
+      el('h2', {}, 'Say it!'),
+      el('p', { class: 'prompt' }, `Say "${letter}" and the sound ${letter} makes.`),
+      video,
+      countdown,
+      el('div', { class: 'row' }, sayBtn, nextBtn),
+      status,
+    );
+
+    openCamera().then((s) => {
+      stream = s;
+      showCamera();
+      speak(`Tap say it. Then say ${letter}, and the sound ${letter} makes.`);
+    }).catch((err) => {
+      console.warn('Camera unavailable', err);
+      video.remove();
+      sayBtn.remove();
+      status.textContent = "The camera isn't working. Say it out loud 3 times instead!";
+      nextBtn.hidden = false;
+      speak(`Say ${letter}, and the sound ${letter} makes, 3 times.`);
+    });
+  });
+}
+
+// 3. Tap every copy of the letter (big and small) among look-alikes.
 function findTheLetter(box, letter) {
   return new Promise((resolve) => {
     const lookalikes = shuffle([...(LOOKALIKES[letter] || '')]);
@@ -101,7 +193,7 @@ function findTheLetter(box, letter) {
   });
 }
 
-// 3. Pick the picture that has the letter's sound. Two rounds.
+// 4. Pick the picture that has the letter's sound. Two rounds.
 async function pickThePicture(box, letter) {
   const { words, soundAtEnd } = LETTERS[letter];
   const where = soundAtEnd ? 'ends' : 'starts';
@@ -138,7 +230,7 @@ async function pickThePicture(box, letter) {
   }
 }
 
-// 4. Trace the big and small letter with a finger or mouse.
+// 5. Trace the big and small letter with a finger or mouse.
 function traceTheLetter(box, letter) {
   return new Promise((resolve) => {
     const canvas = el('canvas', { class: 'trace', width: '640', height: '360' });
@@ -191,4 +283,4 @@ function traceTheLetter(box, letter) {
   });
 }
 
-export const ACTIVITIES = [listenAndRepeat, findTheLetter, pickThePicture, traceTheLetter];
+export const ACTIVITIES = [listenAndRepeat, sayIt, findTheLetter, pickThePicture, traceTheLetter];

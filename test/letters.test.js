@@ -43,6 +43,14 @@ test('letter sounds are recognized', () => {
   assert.ok(heardLetterSound('B', ['bee buh']), 'name then sound in one go');
 });
 
+test('name and sound said together in one go', () => {
+  for (const [letter, said] of [['B', 'bee buh'], ['S', 'es sss'], ['M', 'em mmm'], ['A', 'a ah'], ['T', 'T tuh']]) {
+    assert.ok(heardLetterName(letter, [said]), `${letter} name in "${said}"`);
+    assert.ok(heardLetterSound(letter, [said]), `${letter} sound in "${said}"`);
+  }
+  assert.ok(!heardLetterSound('B', ['bee bee']), 'name twice is not the sound');
+});
+
 test('saying the name is not the sound', () => {
   assert.ok(!heardLetterSound('B', ['bee']));
   assert.ok(!heardLetterSound('B', ['b']));

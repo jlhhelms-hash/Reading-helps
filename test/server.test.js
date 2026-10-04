@@ -41,7 +41,7 @@ test('teacher data needs the PIN', async () => {
 });
 
 test('attempts and videos are saved per student and shown to the teacher', async () => {
-  assert.equal((await post('/api/attempts', { student: 'Maya R.', letter: 'B', nameCorrect: true, soundCorrect: false, heardSound: 'dee' })).status, 201);
+  assert.equal((await post('/api/attempts', { student: 'Maya R.', letter: 'B', nameCorrect: true, soundCorrect: false, heard: 'bee dee' })).status, 201);
   assert.equal((await post('/api/attempts', { student: 'Maya R.', letter: 'S', nameCorrect: true, soundCorrect: true })).status, 201);
   assert.equal((await post('/api/attempts', { student: 'Maya R.', letter: 'bad' })).status, 400);
 
@@ -50,6 +50,8 @@ test('attempts and videos are saved per student and shown to the teacher', async
   assert.equal(up.status, 201);
   const { file } = await up.json();
   assert.match(file, /^B-\d+\.webm$/);
+  const practiceUp = await post('/api/recordings?student=Maya%20R.&letter=B&kind=practice', video, { 'Content-Type': 'video/webm' });
+  assert.match((await practiceUp.json()).file, /^B-practice-\d+\.webm$/);
   assert.equal((await post('/api/recordings?student=Maya&letter=B', video, { 'Content-Type': 'text/plain' })).status, 415);
 
   const login = await post('/api/teacher/login', { pin: '2468' });
@@ -58,16 +60,17 @@ test('attempts and videos are saved per student and shown to the teacher', async
   const get = (url, opts = {}) => fetch(base + url, { ...opts, headers: { cookie, ...opts.headers } });
 
   const { students } = await (await get('/api/teacher/students')).json();
-  assert.deepEqual(students.map((s) => [s.name, s.needsHelp, s.practiced, s.mastered, s.videoCount]), [['Maya R.', ['B'], [], ['S'], 1]]);
+  assert.deepEqual(students.map((s) => [s.name, s.needsHelp, s.practiced, s.mastered, s.videoCount]), [['Maya R.', ['B'], [], ['S'], 2]]);
 
   await post('/api/attempts', { student: 'Maya R.', letter: 'B', retry: true, nameCorrect: true, soundCorrect: true });
   const after = (await (await get('/api/teacher/students')).json()).students[0];
   assert.deepEqual([after.needsHelp, after.practiced], [[], ['B']], 'B passed after practice');
 
   const detail = await (await get('/api/teacher/students/maya-r')).json();
-  assert.equal(detail.videos[0].letter, 'B');
+  assert.deepEqual(detail.videos.map((v) => [v.letter, v.kind]).sort(), [['B', 'missed'], ['B', 'practice']]);
   assert.equal(detail.attempts[0].letter, 'B');
   assert.equal(detail.attempts[0].retry, true);
+  assert.equal(detail.attempts.at(-1).heard, 'bee dee');
 
   const clip = await get(`/api/teacher/videos/maya-r/${file}`, { headers: { range: 'bytes=0-3' } });
   assert.equal(clip.status, 206);

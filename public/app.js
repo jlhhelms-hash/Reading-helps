@@ -3,8 +3,9 @@
 
 import { ALPHABET, heardLetterName, heardLetterSound, shuffle } from './letters.js';
 import { ACTIVITIES, speak } from './activities.js';
+import { openCamera, recordClip, stopCamera, uploadClip } from './recorder.js';
 
-const TRIES_PER_STEP = 2;
+const TRIES = 2;
 const RECORD_SECONDS = 5;
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -21,20 +22,36 @@ function nextClick(button) {
   return new Promise((resolve) => button.addEventListener('click', resolve, { once: true }));
 }
 
-// Listen once. Resolves with the recognizer's guesses (may be empty).
+// Listen until the student stops talking (or 7 seconds pass). Resolves with
+// the recognizer's guesses: the whole thing first, then each piece's alternatives.
 function listen() {
   return new Promise((resolve, reject) => {
     const rec = new Recognition();
     rec.lang = 'en-US';
-    rec.interimResults = false;
+    rec.continuous = true;
+    rec.interimResults = true;
     rec.maxAlternatives = 5;
-    const heard = [];
-    const timer = setTimeout(() => rec.stop(), 6000);
+    let pieces = [];
+    let quiet;
+    const hardStop = setTimeout(() => rec.stop(), 7000);
     rec.onresult = (e) => {
-      for (const result of e.results) for (const alt of result) heard.push(alt.transcript);
+      pieces = [...e.results].map((result) => [...result].map((alt) => alt.transcript.trim()).filter(Boolean));
+      // Stop once the student has been quiet for a moment.
+      clearTimeout(quiet);
+      quiet = setTimeout(() => rec.stop(), 1500);
     };
-    rec.onerror = (e) => { clearTimeout(timer); e.error === 'no-speech' ? resolve([]) : reject(e.error); };
-    rec.onend = () => { clearTimeout(timer); resolve(heard); };
+    rec.onerror = (e) => {
+      clearTimeout(hardStop);
+      clearTimeout(quiet);
+      if (e.error === 'no-speech' || e.error === 'aborted') resolve([]);
+      else reject(e.error);
+    };
+    rec.onend = () => {
+      clearTimeout(hardStop);
+      clearTimeout(quiet);
+      const whole = pieces.map((alts) => alts[0]).filter(Boolean).join(' ');
+      resolve(whole ? [whole, ...pieces.flat()] : []);
+    };
     rec.start();
   });
 }
@@ -45,34 +62,44 @@ function setFeedback(text, kind = '') {
   f.className = `feedback ${kind}`;
 }
 
-// Ask a grown-up to judge, for browsers without speech recognition.
-async function adultCheck() {
-  $('mic-btn').hidden = true;
-  $('adult-check').hidden = false;
-  const yes = nextClick($('adult-yes')).then(() => true);
-  const no = nextClick($('adult-no')).then(() => false);
-  const correct = await Promise.race([yes, no]);
-  $('adult-check').hidden = true;
-  $('mic-btn').hidden = false;
-  return { correct, heard: '', checkedBy: 'adult' };
+function markStep(step, correct) {
+  $(`step-${step}`).className = `step ${correct ? 'done' : 'missed'}`;
 }
 
-// One step: the letter's name or its sound. Returns { correct, heard, checkedBy }.
-async function checkStep(letter, step) {
-  const check = step === 'name' ? heardLetterName : heardLetterSound;
-  const ask = step === 'name' ? 'What is the name of this letter?' : 'What sound does this letter make?';
-  $('prompt').textContent = ask;
-  $(`step-${step}`).classList.add('active');
-  speak(ask);
+// Ask a grown-up to judge, for browsers without speech recognition.
+async function adultCheck(letter) {
+  $('say-btn').hidden = true;
+  $('adult-check').hidden = false;
+  const ask = async (question) => {
+    $('adult-question').textContent = question;
+    const yes = nextClick($('adult-yes')).then(() => true);
+    const no = nextClick($('adult-no')).then(() => false);
+    return Promise.race([yes, no]);
+  };
+  const name = await ask(`Grown-up: did they say the name "${letter}"?`);
+  markStep('name', name);
+  const sound = await ask(`Grown-up: did they say the ${letter} sound?`);
+  markStep('sound', sound);
+  $('adult-check').hidden = true;
+  $('say-btn').hidden = false;
+  return { name, sound, heard: '', checkedBy: 'adult' };
+}
 
-  const allHeard = [];
-  for (let tries = 0; tries < TRIES_PER_STEP;) {
-    if (state.adultMode) return adultCheck();
-    setFeedback(tries ? 'Try one more time. Tap the microphone.' : 'Tap the microphone, then talk.');
-    await nextClick($('mic-btn'));
+// The student taps "Say it" and says the letter's name and its sound together.
+// Whatever they get right on any try counts. Returns { name, sound, heard, checkedBy }.
+async function checkLetter(letter) {
+  const got = { name: false, sound: false };
+  const heardLog = [];
+  $('prompt').textContent = 'Tap “Say it”. Say the letter and its sound.';
+  speak('Say the name of this letter, and the sound it makes.');
+
+  for (let tries = 0; tries < TRIES;) {
+    if (state.adultMode) return adultCheck(letter);
+    if (!tries) setFeedback('');
+    await nextClick($('say-btn'));
     window.speechSynthesis?.cancel();
-    $('mic-btn').classList.add('listening');
-    setFeedback('Listening…');
+    $('say-btn').classList.add('listening');
+    $('say-btn').textContent = '👂 Listening…';
     let heard;
     try {
       heard = await listen();
@@ -83,20 +110,35 @@ async function checkStep(letter, step) {
       setFeedback("I can't hear right now. A grown-up can check.");
       continue;
     } finally {
-      $('mic-btn').classList.remove('listening');
+      $('say-btn').classList.remove('listening');
+      $('say-btn').textContent = '🎤 Say it';
     }
     if (!heard.length) {
-      setFeedback("I didn't hear you. Let's try again!");
-      await wait(1200);
+      setFeedback("I didn't hear you. Tap “Say it” and try again!");
       continue;
     }
-    allHeard.push(heard[0]);
-    if (check(letter, heard)) return { correct: true, heard: allHeard.join(' / '), checkedBy: 'app' };
+    heardLog.push(heard[0]);
+    got.name ||= heardLetterName(letter, heard);
+    got.sound ||= heardLetterSound(letter, heard);
+    if (got.name) markStep('name', true);
+    if (got.sound) markStep('sound', true);
+    if (got.name && got.sound) break;
+
     tries++;
-    setFeedback(`I heard "${heard[0]}".`, 'oops');
-    await wait(1500);
+    if (tries >= TRIES) break;
+    if (got.name) {
+      setFeedback(`Yes, that's ${letter}! Now tap “Say it” and say its sound.`, 'oops');
+      $('prompt').textContent = `What sound does ${letter} make?`;
+    } else if (got.sound) {
+      setFeedback('Good sound! Now tap “Say it” and say the letter’s name.', 'oops');
+      $('prompt').textContent = 'What is this letter’s name?';
+    } else {
+      setFeedback(`I heard "${heard[0]}". Try one more time!`, 'oops');
+    }
   }
-  return { correct: false, heard: allHeard.join(' / '), checkedBy: 'app' };
+  if (!got.name) markStep('name', false);
+  if (!got.sound) markStep('sound', false);
+  return { ...got, heard: heardLog.join(' / '), checkedBy: 'app' };
 }
 
 async function saveAttempt(record) {
@@ -117,46 +159,29 @@ async function testLetter(letter, retry) {
   $('letter-upper').textContent = letter;
   $('letter-lower').textContent = letter.toLowerCase();
   $('letter-card').classList.remove('pass');
-  ['name', 'sound'].forEach((s) => $(`step-${s}`).className = 'step');
+  ['name', 'sound'].forEach((s) => { $(`step-${s}`).className = 'step'; });
 
-  const name = await checkStep(letter, 'name');
-  $('step-name').classList.add(name.correct ? 'done' : 'missed');
-  if (name.correct) {
-    setFeedback(`Yes! That's ${letter}! ⭐`, 'yay');
-  } else {
-    setFeedback(`This letter is ${letter}.`, 'oops');
-    await speak(`This letter is ${letter}.`);
-  }
-  await wait(1000);
-
-  const sound = await checkStep(letter, 'sound');
-  $('step-sound').classList.add(sound.correct ? 'done' : 'missed');
-
+  const result = await checkLetter(letter);
   await saveAttempt({
-    letter, retry, nameCorrect: name.correct, soundCorrect: sound.correct,
-    heardName: name.heard, heardSound: sound.heard,
-    checkedBy: name.checkedBy === 'adult' || sound.checkedBy === 'adult' ? 'adult' : 'app',
+    letter, retry, nameCorrect: result.name, soundCorrect: result.sound,
+    heard: result.heard, checkedBy: result.checkedBy,
   });
 
-  const passed = name.correct && sound.correct;
+  const passed = result.name && result.sound;
   if (passed) {
     $('letter-card').classList.add('pass');
     setFeedback('You did it! 🎉', 'yay');
     await speak('Great job!');
     await wait(800);
   } else {
-    setFeedback(sound.correct ? 'Good sound! Let\'s practice the name.' : 'Let\'s practice this one together.', 'oops');
-    await wait(1500);
+    setFeedback(`This letter is ${letter}. Let's practice it together!`, 'oops');
+    await speak(`This letter is ${letter}. Let's practice it together!`);
+    await wait(800);
   }
   return passed;
 }
 
-function pickMimeType() {
-  const options = ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
-  return options.find((t) => window.MediaRecorder?.isTypeSupported?.(t)) || '';
-}
-
-// Record the student saying the sound and upload it for the teacher.
+// Record the student saying the letter and sound, and save it for the teacher.
 async function recordVideo(letter) {
   show('record');
   $('record-prompt').textContent = `Press the button, then say "${letter}" and the sound ${letter} makes.`;
@@ -168,7 +193,7 @@ async function recordVideo(letter) {
 
   let stream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: true });
+    stream = await openCamera();
   } catch (err) {
     console.warn('Camera unavailable', err);
     $('record-status').textContent = "The camera isn't working, so let's go practice!";
@@ -181,33 +206,13 @@ async function recordVideo(letter) {
   await nextClick(button);
   button.disabled = true;
 
-  for (const n of [3, 2, 1]) {
-    $('countdown').textContent = n;
-    await wait(800);
-  }
-  const mimeType = pickMimeType();
-  const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-  const chunks = [];
-  recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
-  const stopped = new Promise((r) => { recorder.onstop = r; });
-  recorder.start();
-  for (let s = RECORD_SECONDS; s > 0; s--) {
-    $('countdown').textContent = `🔴 Say it now! ${s}`;
-    await wait(1000);
-  }
-  recorder.stop();
-  await stopped;
-  stream.getTracks().forEach((t) => t.stop());
+  const clip = await recordClip(stream, RECORD_SECONDS, (text) => { $('countdown').textContent = text; });
+  stopCamera(stream);
   $('camera').srcObject = null;
-  $('countdown').textContent = '';
 
-  const type = (recorder.mimeType || mimeType || 'video/webm').split(';')[0];
   $('record-status').textContent = 'Saving…';
   try {
-    const res = await fetch(`api/recordings?student=${encodeURIComponent(state.student)}&letter=${letter}`, {
-      method: 'POST', headers: { 'Content-Type': type }, body: new Blob(chunks, { type }),
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    await uploadClip(state.student, letter, 'missed', clip);
     $('record-status').textContent = 'Saved for your teacher! ⭐';
   } catch (err) {
     console.warn('Upload failed', err);
@@ -222,7 +227,7 @@ async function practice(letter) {
   $('practice-letter').textContent = letter + letter.toLowerCase();
   for (const [i, activity] of ACTIVITIES.entries()) {
     $('practice-step').textContent = `${i + 1} of ${ACTIVITIES.length}`;
-    await activity($('activity'), letter);
+    await activity($('activity'), letter, { student: state.student });
   }
 }
 

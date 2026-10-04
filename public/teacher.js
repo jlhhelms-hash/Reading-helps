@@ -65,7 +65,7 @@ async function loadStudent(id) {
     const card = el('div', { class: 'video-card' },
       el('video', { src, controls: '', preload: 'metadata', playsinline: '' }),
       el('div', { class: 'row' },
-        el('span', {}, el('strong', {}, `Letter ${v.letter}`), ` · ${when(v.recorded)}`),
+        el('span', {}, el('strong', {}, `Letter ${v.letter}`), ` · ${v.kind === 'practice' ? 'practice' : 'missed'} · ${when(v.recorded)}`),
         el('span', { class: 'row' },
           el('a', { href: src, download: `${s.name} - ${v.letter} - ${v.file}` }, 'Download'),
           el('button', {
@@ -84,7 +84,7 @@ async function loadStudent(id) {
     el('td', {}, a.letter + (a.retry ? ' (after practice)' : '')),
     el('td', {}, mark(a.nameCorrect)),
     el('td', {}, mark(a.soundCorrect)),
-    el('td', {}, a.checkedBy === 'adult' ? 'checked by an adult' : `name: "${a.heardName || '-'}" · sound: "${a.heardSound || '-'}"`))));
+    el('td', {}, a.checkedBy === 'adult' ? 'checked by an adult' : (a.heard ?? [a.heardName, a.heardSound].filter(Boolean).join(' / ')) || '(nothing)'))));
 }
 
 $('login-form').addEventListener('submit', async (e) => {
