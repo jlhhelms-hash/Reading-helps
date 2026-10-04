@@ -42,8 +42,7 @@ Use **Chrome**, **Edge** or **Safari**. The first time, the browser asks to use 
 - **Speech checking is a helper, not a judge.** Browsers turn speech into words, so a bare sound like "/b/" can come out as "buh," "bah" or "but." The app accepts the usual spellings for each sound (see `public/letters.js`). The teacher page shows what it heard so you can spot letters it gets wrong. In browsers without speech recognition (such as Firefox), or if the microphone is blocked, a grown-up gets **✓ Yes / ✗ Not yet** buttons instead.
 - **Speech recognition in Chrome needs the internet.** Chrome sends the audio to Google to turn it into words.
 - **Camera and microphone only work on `localhost` or an `https://` address.** Running on one classroom computer works as-is. Letting student devices across the school network connect needs HTTPS hosting.
-- **Student videos are private data.** They are saved only on the computer running the app, in `data/students/<name>/videos/`. That folder is never uploaded to GitHub (see `.gitignore`). Check your school or district's rules for recording students before you use this with a class.
-- **Videos are saved on the computer running the app, in `data/students/<name>/videos/`.** Missed-letter clips are named like `B-<time>.webm` and practice clips like `B-practice-<time>.webm`.
+- **Student videos are private data.** They are saved only on the computer running the app, in `data/students/<name>/videos/` (missed-letter clips are named like `B-<time>.webm`, practice clips like `B-practice-<time>.webm`). That folder is never uploaded to GitHub (see `.gitignore`). Check your school or district's rules for recording students before you use this with a class.
 - Students are kept apart by name, so two students named "Sam" share a folder. Use a last initial, like "Sam P."
 
 ## For developers
