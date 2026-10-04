@@ -1,0 +1,4 @@
+# Student results and videos. These are private and stay on the computer running the app.
+data/
+node_modules/
+.DS_Store

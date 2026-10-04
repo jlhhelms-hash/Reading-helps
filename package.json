@@ -1,0 +1,14 @@
+{
+  "name": "letter-sounds",
+  "version": "0.1.0",
+  "description": "Letter name and sound practice for elementary students, with a teacher page.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

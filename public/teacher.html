@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Letter Sounds – Teacher</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Andika:wght@400;700&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <section id="screen-login" class="screen" hidden>
+      <h1>Teacher page</h1>
+      <form id="login-form" class="stack">
+        <input id="pin" type="password" inputmode="numeric" placeholder="Teacher PIN" autocomplete="current-password" required>
+        <button class="big-btn" type="submit">Open</button>
+      </form>
+      <p class="feedback oops" id="login-error" aria-live="polite"></p>
+      <p class="small"><a href="./">Back to student app</a></p>
+    </section>
+
+    <section id="screen-list" class="screen teacher" hidden>
+      <div class="teacher-head">
+        <h1>Students</h1>
+        <div class="row">
+          <button class="plain-btn" id="refresh" type="button">↻ Refresh</button>
+          <button class="plain-btn" id="logout" type="button">Log out</button>
+        </div>
+      </div>
+      <div class="student-list" id="student-list"></div>
+    </section>
+
+    <section id="screen-student" class="screen teacher" hidden>
+      <div class="teacher-head">
+        <button class="plain-btn" id="back" type="button">← All students</button>
+      </div>
+      <h1 id="student-name"></h1>
+      <h2>Letters</h2>
+      <div class="legend"><span class="good">Passed first time</span><span class="practiced">Passed after practice</span><span class="help">Needs help</span><span class="none">Not tried yet</span></div>
+      <div class="letter-grid" id="letter-grid"></div>
+      <h2>Videos</h2>
+      <div class="videos" id="videos"></div>
+      <h2>Recent tries</h2>
+      <p class="small">"Heard" is what the app's speech recognition wrote down. Use it to spot letters the app may be marking wrong.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>When</th><th>Letter</th><th>Name</th><th>Sound</th><th>Heard</th></tr></thead>
+        <tbody id="attempts"></tbody>
+      </table></div>
+    </section>
+  </main>
+  <script type="module" src="teacher.js"></script>
+</body>
+</html>

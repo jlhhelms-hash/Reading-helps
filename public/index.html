@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Letter Sounds</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Andika:wght@400;700&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="app">
+    <!-- Start: student types their name -->
+    <section id="screen-start" class="screen">
+      <h1>Letter Sounds</h1>
+      <p class="lead">Type your name to start.</p>
+      <form id="start-form" class="stack">
+        <input id="student-name" name="name" autocomplete="off" placeholder="Your name" maxlength="60" required>
+        <label class="small">How many letters?
+          <select id="letter-count">
+            <option value="5">5</option>
+            <option value="10" selected>10</option>
+            <option value="26">All 26</option>
+          </select>
+        </label>
+        <button type="submit" class="big-btn">Let's go!</button>
+      </form>
+      <p class="small"><a href="teacher">Teacher page</a></p>
+    </section>
+
+    <!-- Letter test -->
+    <section id="screen-letter" class="screen" hidden>
+      <div class="topbar">
+        <span id="who"></span>
+        <span id="progress"></span>
+      </div>
+      <div class="letter-card" id="letter-card"><span id="letter-upper"></span><span id="letter-lower"></span></div>
+      <p class="prompt" id="prompt"></p>
+      <div class="steps">
+        <span class="step" id="step-name">Name</span>
+        <span class="step" id="step-sound">Sound</span>
+      </div>
+      <button id="mic-btn" class="mic-btn" type="button" aria-label="Tap and talk">🎤</button>
+      <p class="feedback" id="feedback" aria-live="polite"></p>
+      <div id="adult-check" class="adult-check" hidden>
+        <p class="small">Grown-up: did they say it right?</p>
+        <button type="button" class="big-btn ok" id="adult-yes">✓ Yes</button>
+        <button type="button" class="big-btn no" id="adult-no">✗ Not yet</button>
+      </div>
+    </section>
+
+    <!-- Record a video after a miss -->
+    <section id="screen-record" class="screen" hidden>
+      <h2>Let's record you!</h2>
+      <p class="prompt" id="record-prompt"></p>
+      <video id="camera" autoplay muted playsinline></video>
+      <p class="countdown" id="countdown" aria-live="polite"></p>
+      <button id="record-btn" class="big-btn" type="button">🔴 Start recording</button>
+      <p class="feedback" id="record-status" aria-live="polite"></p>
+    </section>
+
+    <!-- Practice activities -->
+    <section id="screen-practice" class="screen" hidden>
+      <div class="topbar">
+        <span>Practice: <strong id="practice-letter"></strong></span>
+        <span id="practice-step"></span>
+      </div>
+      <div id="activity"></div>
+    </section>
+
+    <!-- Done -->
+    <section id="screen-done" class="screen" hidden>
+      <h1>🎉 Great job!</h1>
+      <p class="lead" id="done-summary"></p>
+      <button id="again-btn" class="big-btn" type="button">Play again</button>
+    </section>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
