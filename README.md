@@ -9,7 +9,7 @@ A web app that checks whether elementary students know each letter's **name** an
 **Name test** ("What is the name of this letter?")
 - A first try plus up to 2 retries.
 - If the app can't make out any words, the teacher sees **✓ Correct**, **✗ Not correct**, or **Continue (teacher will listen later)**. "Later" marks the answer **Teacher listening required**.
-- A wrong name: the app shows the right name, records a short video of the student saying the letter name, runs five practice activities, then gives one more try:
+- A wrong name: the app shows the right name, records a short video (3 seconds) of the student saying the letter name, runs five practice activities, then gives one more try:
   - **Listen and say it:** hear the letter and its sound, with pictures.
   - **Say it!:** film yourself saying the letter and its sound, hear it played back, and save it for the teacher.
   - **Find the letter:** tap every big and small copy among look-alike letters.
@@ -18,7 +18,7 @@ A web app that checks whether elementary students know each letter's **name** an
 
 **Sound test** ("What is the sound of this letter?")
 - Two tries.
-- If the sound still isn't heard or isn't right, the **webcam opens**. The student taps **🔴 Record my sound** and says the sound (a 3-2-1 countdown, then 5 seconds of recording). The video goes to the teacher and the student goes **straight to the next letter**. That sound is marked **Teacher listening required** until the teacher watches the video and marks it.
+- If the sound still isn't heard or isn't right, the **webcam opens**. The student taps **🔴 Record my sound** and says the sound (a 3-2-1 countdown, then 3 seconds of recording). The video goes to the teacher and the student goes **straight to the next letter**. That sound is marked **Teacher listening required** until the teacher watches the video and marks it.
 
 At the end of each test, students see how many letters they knew and how many stars they earned.
 
@@ -61,6 +61,7 @@ Use **Chrome**, **Edge** or **Safari**. The first time, the browser asks to use 
 
 ## Good to know
 
+- **S.P.I.R.E. key words:** the practice screen teaches letters the S.P.I.R.E. way (letter, key word, sound) for the key words confirmed from S.P.I.R.E.'s public materials: a ax /ă/, e bed /ĕ/, i hit /ĭ/, o ox /ŏ/, u up /ŭ/, p pat /p/. Add the rest from your phonogram cards in `SPIRE_KEYS` in `public/letters.js`.
 - **Speech checking is a helper, not a judge.** Browsers turn speech into words, so a bare sound like "/b/" can come out as "buh," "bah" or "but." The app accepts the usual spellings for each sound (see `public/letters.js`). The teacher page shows what it heard so you can spot letters it gets wrong. In browsers without speech recognition (such as Firefox), or if the microphone is blocked, a grown-up gets **✓ Yes / ✗ Not yet** buttons instead.
 - **Short sounds are the hardest.** A sound like /k/ often comes back from the browser as no words at all. The app watches the microphone volume, so if it heard a voice but no words it tells the student "I heard you, but I couldn't tell what you said" and counts the try. After the last try, the teacher can mark it, or it is flagged for the teacher to listen to later.
 - **The teacher buttons are on the student's screen,** so a student working alone could tap ✓ Correct. Anything they tap shows as "(teacher)" on the teacher page.

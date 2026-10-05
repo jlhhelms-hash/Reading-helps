@@ -1,11 +1,11 @@
 // Practice activities shown after a student misses a letter.
 // Each activity draws itself into `box` and resolves when the student finishes.
 
-import { LETTERS, ALPHABET, shuffle } from './letters.js';
+import { LETTERS, ALPHABET, SPIRE_KEYS, shuffle } from './letters.js';
 import { openCamera, recordClip, stopCamera, uploadClip } from './recorder.js';
 import { confetti, letterColor, popTwinkle } from './fun.js';
 
-const SAY_IT_SECONDS = 4;
+const SAY_IT_SECONDS = 3;
 
 // Letters that are easy to mix up, so "find the letter" is real practice.
 const LOOKALIKES = {
@@ -77,10 +77,17 @@ function soundHint(letter) {
 function listenAndRepeat(box, letter) {
   return new Promise((resolve) => {
     const { words } = LETTERS[letter];
-    const say = () => speak(`This is ${letter}. ${soundHint(letter)} Now you say it!`);
+    const key = SPIRE_KEYS[letter];
+    // With a S.P.I.R.E. key word, teach it the S.P.I.R.E. way: letter, key word, sound.
+    const say = () => speak(key
+      ? `${letter}. ${key.word}. Listen for the ${letter} sound in ${key.word}. Now you say the sound!`
+      : `This is ${letter}. ${soundHint(letter)} Now you say it!`);
     box.replaceChildren(
       el('h2', {}, 'Listen and say it'),
       el('div', { class: 'letter-card small-card', style: `--letter-color: ${letterColor(letter)}` }, letter + letter.toLowerCase()),
+      ...(key ? [el('div', { class: 'key-word' },
+        el('span', { class: 'emoji' }, key.emoji),
+        el('span', {}, `${letter.toLowerCase()} · ${key.word} · ${key.sound}`))] : []),
       el('div', { class: 'pictures' }, ...words.map(([w, emoji]) =>
         el('button', { class: 'picture', type: 'button', onclick: () => speak(w) }, el('span', { class: 'emoji' }, emoji), el('span', {}, w)))),
       el('p', { class: 'prompt' }, 'Say the sound 3 times, like the words.'),

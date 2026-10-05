@@ -8,7 +8,7 @@
 // "bih" count as the B sound too.
 
 export const LETTERS = {
-  A: { names: ['a', 'ay', 'hey', 'hay'], sounds: ['ah', 'aah', 'at', 'add', 'an', 'and', 'ask', 'apple'], soundStarts: [], words: [['apple', '🍎'], ['ant', '🐜'], ['alligator', '🐊']] },
+  A: { names: ['a', 'ay', 'hey', 'hay'], sounds: ['ah', 'aah', 'at', 'add', 'an', 'and', 'ask', 'apple', 'ax'], soundStarts: [], words: [['apple', '🍎'], ['ant', '🐜'], ['alligator', '🐊']] },
   B: { names: ['b', 'bee', 'be', 'bea'], sounds: ['buh', 'bah', 'ba', 'bu', 'but', 'bud', 'bug'], soundStarts: ['b'], words: [['ball', '⚽'], ['bear', '🐻'], ['banana', '🍌']] },
   C: { names: ['c', 'see', 'sea', 'si', 'cee'], sounds: ['kuh', 'cuh', 'ka', 'ca', 'cut', 'cup', 'kah', 'ck', 'ku', 'cu', 'coo', 'cook', 'kick', 'cuz'], soundStarts: ['c', 'k'], words: [['cat', '🐱'], ['car', '🚗'], ['cake', '🎂']] },
   D: { names: ['d', 'dee', 'de'], sounds: ['duh', 'da', 'dah', 'du', 'dud', 'done'], soundStarts: ['d'], words: [['dog', '🐶'], ['duck', '🦆'], ['door', '🚪']] },
@@ -37,6 +37,19 @@ export const LETTERS = {
 };
 
 export const ALPHABET = Object.keys(LETTERS);
+
+// S.P.I.R.E. key words: the program teaches each letter as name, key word, sound
+// (for example "a, ax, /ă/"), with clipped sounds (/p/, not "puh"). These six
+// are the ones confirmed from S.P.I.R.E.'s public materials; add the rest from
+// your S.P.I.R.E. phonogram cards in the same form.
+export const SPIRE_KEYS = {
+  A: { word: 'ax', emoji: '🪓', sound: '/ă/' },
+  E: { word: 'bed', emoji: '🛏️', sound: '/ĕ/' },
+  I: { word: 'hit', emoji: '⚾', sound: '/ĭ/' },
+  O: { word: 'ox', emoji: '🐂', sound: '/ŏ/' },
+  U: { word: 'up', emoji: '⬆️', sound: '/ŭ/' },
+  P: { word: 'pat', emoji: '🤚', sound: '/p/' },
+};
 
 // Lowercase, drop punctuation, and shorten stretched sounds ("sssss" -> "ss")
 // so a long hiss and a short one compare the same.

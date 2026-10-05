@@ -11,7 +11,7 @@ import { chime, confetti, flyStar, letterColor, popTwinkle, renderStarChart } fr
 
 const LISTEN_MS = 5000; // longest the app listens on one try
 const QUIET_MS = 700; // stop listening this long after the student stops talking
-const RECORD_SECONDS = 5;
+const RECORD_SECONDS = 3;
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 const $ = (id) => document.getElementById(id);
