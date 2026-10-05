@@ -66,7 +66,14 @@
         <p class="small">First star: letter name. Second star: letter sound.</p>
         <div class="star-chart" id="welcome-chart"></div>
       </div>
-      <button id="begin-btn" class="big-btn go" type="button">Start ▶</button>
+      <div class="test-choice">
+        <button id="name-test-btn" class="test-btn name-test" type="button">
+          <span class="test-icon">🔤</span><span class="test-title">Name test</span><span class="test-sub">Say each letter's name</span>
+        </button>
+        <button id="sound-test-btn" class="test-btn sound-test" type="button">
+          <span class="test-icon">🔊</span><span class="test-title">Sound test</span><span class="test-sub">Say each letter's sound</span>
+        </button>
+      </div>
     </section>
 
     <!-- Letter test -->
@@ -85,8 +92,7 @@
         </div>
       </div>
       <div class="steps">
-        <span class="step" id="step-name">Name</span>
-        <span class="step" id="step-sound">Sound</span>
+        <span class="step" id="test-pill"></span>
       </div>
       <button id="say-btn" class="say-btn" type="button">🎤 Say it</button>
       <div id="teacher-check" class="teacher-check" hidden>
@@ -123,7 +129,7 @@
 
     <!-- Done -->
     <section id="screen-done" class="screen" hidden>
-      <h1 class="done-title">🎉 Great job!</h1>
+      <h1 class="done-title" id="done-title">🎉 Great job!</h1>
       <div class="owl-row">
         <div class="owl" aria-hidden="true">🦉</div>
         <div class="bubble"><p class="bubble-main" id="done-summary"></p><p id="done-stars"></p></div>
@@ -134,7 +140,8 @@
         <div class="star-chart" id="done-chart"></div>
       </div>
       <div class="row">
-        <button id="again-btn" class="big-btn go" type="button">Play again ↻</button>
+        <button id="next-test-btn" class="big-btn go" type="button">Next: Sound test ▶</button>
+        <button id="again-btn" class="big-btn" type="button">Again ↻</button>
         <button id="switch-btn" class="big-btn" type="button">New student</button>
       </div>
     </section>

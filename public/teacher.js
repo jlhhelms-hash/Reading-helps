@@ -44,7 +44,10 @@ async function loadList() {
   list.replaceChildren(...students.map((s) => el('button', { class: 'student-row', type: 'button', onclick: () => loadStudent(s.id) },
     el('strong', {}, s.last ? `${s.last}, ${s.first}` : s.first),
     el('span', { class: 'meta' }, [s.toReview && `🎧 ${s.toReview} to listen`, `⭐ ${s.stars}`, `🎥 ${s.videoCount}`].filter(Boolean).join(' · ')),
-    el('span', {}, s.needsHelp.length ? `Needs help: ${s.needsHelp.join(' ')}` : 'No letters need help'),
+    el('span', {}, [
+      `Names: ${s.names.needsHelp.length ? `help with ${s.names.needsHelp.join(' ')}` : `${s.names.known.length + s.names.practiced.length} known`}`,
+      `Sounds: ${s.sounds.needsHelp.length ? `help with ${s.sounds.needsHelp.join(' ')}` : `${s.sounds.known.length + s.sounds.practiced.length} known`}`,
+    ].join(' · ')),
     el('span', { class: 'meta' }, [gradeLabel(s.grade), s.lastTestDate && `tested ${s.lastTestDate}`].filter(Boolean).join(' · ')))));
 }
 
@@ -54,19 +57,22 @@ async function loadStudent(id) {
   $('student-name').textContent = [`${s.first} ${s.last}`, gradeLabel(s.grade), `⭐ ${s.stars}`].filter(Boolean).join(' · ');
   $('student-export').href = `api/teacher/students/${encodeURIComponent(id)}/export.xlsx`;
 
-  $('letter-grid').replaceChildren(...ALPHABET.map((letter) => {
-    const stats = s.letters[letter];
-    const cls = !stats ? '' : stats.listen ? 'listen' : !stats.lastPassed ? 'help' : stats.everMissed ? 'practiced' : 'good';
-    const title = stats
-      ? `${letter}: ${stats.tries} tries, name missed ${stats.nameMissed}, sound missed ${stats.soundMissed}`
-      : `${letter}: not tried yet`;
-    return el('div', { class: `letter-cell ${cls}`, title }, letter);
-  }));
+  for (const test of ['name', 'sound']) {
+    $(`${test}-grid`).replaceChildren(...ALPHABET.map((letter) => {
+      const stats = s.letters[letter]?.[test];
+      const cls = !stats ? '' : stats.listen ? 'listen' : !stats.lastCorrect ? 'help' : stats.everMissed ? 'practiced' : 'good';
+      const title = stats ? `${letter} ${test}: ${stats.tries} tries, missed ${stats.missed}` : `${letter} ${test}: not tried yet`;
+      return el('div', { class: `letter-cell ${cls}`, title }, letter);
+    }));
+  }
 
   // Answers the app couldn't hear: the teacher watches the video, then marks them.
   $('review-section').hidden = !s.toReview.length;
   $('review-list').replaceChildren(...s.toReview.map((r) => {
-    const clip = s.videos.find((v) => v.letter === r.letter && v.recorded >= r.at) || s.videos.find((v) => v.letter === r.letter);
+    const forLetter = s.videos.filter((v) => v.letter === r.letter);
+    // Videos are newest first, so this finds the sound video made just before this answer was saved.
+    const clip = (r.step === 'sound' && forLetter.find((v) => v.kind === 'sound' && v.recorded <= r.at))
+      || forLetter.find((v) => v.recorded >= r.at) || forLetter[0];
     const decide = async (correct) => {
       await api(`students/${encodeURIComponent(id)}/review`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -89,7 +95,7 @@ async function loadStudent(id) {
     const card = el('div', { class: 'video-card' },
       el('video', { src, controls: '', preload: 'metadata', playsinline: '' }),
       el('div', { class: 'row' },
-        el('span', {}, el('strong', {}, `Letter ${v.letter}`), ` · ${v.kind === 'practice' ? 'practice' : 'missed'} · ${when(v.recorded)}`),
+        el('span', {}, el('strong', {}, `Letter ${v.letter}`), ` · ${{ practice: 'practice', sound: 'sound check', missed: 'missed' }[v.kind] || v.kind} · ${when(v.recorded)}`),
         el('span', { class: 'row' },
           el('a', { href: src, download: `${s.name} - ${v.letter} - ${v.file}` }, 'Download'),
           el('button', {
@@ -102,19 +108,17 @@ async function loadStudent(id) {
     return card;
   }) : [el('p', { class: 'small' }, 'No videos yet.')]));
 
-  const by = (a, step) => a[`${step}By`] || (a.checkedBy === 'adult' ? 'teacher' : 'app');
-  const mark = (a, step) => {
-    if (by(a, step) === 'review') return el('span', { class: 'listen-text' }, '🎧 Listen');
-    const ok = a[`${step}Correct`];
-    return el('span', { class: ok ? 'yes' : 'no-text' }, (ok ? '✓' : '✗') + (by(a, step) === 'teacher' ? ' (teacher)' : ''));
+  const mark = (a) => {
+    if (a.by === 'review') return el('span', { class: 'listen-text' }, '🎧 Listen');
+    return el('span', { class: a.correct ? 'yes' : 'no-text' }, (a.correct ? '✓' : '✗') + (a.by === 'teacher' ? ' (teacher)' : ''));
   };
-  $('attempts').replaceChildren(...s.attempts.map((a) => el('tr', {},
+  $('attempts').replaceChildren(...s.answers.map((a) => el('tr', {},
     el('td', {}, a.testDate || ''),
     el('td', {}, when(a.at)),
+    el('td', {}, a.test === 'name' ? 'Name' : 'Sound'),
     el('td', {}, a.letter + (a.retry ? ' (after practice)' : '')),
-    el('td', {}, mark(a, 'name')),
-    el('td', {}, mark(a, 'sound')),
-    el('td', {}, (a.heard ?? [a.heardName, a.heardSound].filter(Boolean).join(' / ')) || '(nothing)'))));
+    el('td', {}, mark(a)),
+    el('td', {}, a.heard || '(nothing)'))));
 }
 
 $('login-form').addEventListener('submit', async (e) => {

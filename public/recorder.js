@@ -39,7 +39,8 @@ export async function recordClip(stream, seconds, onTick) {
   return new Blob(chunks, { type });
 }
 
-// `student` is { first, last }. `kind` is "missed" (after a wrong answer) or "practice" (from the Say it step).
+// `student` is { first, last }. `kind` is "missed" (after a missed name), "sound"
+// (the sound wasn't heard right) or "practice" (from the practice Say it step).
 export async function uploadClip(student, letter, kind, blob) {
   const params = new URLSearchParams({ ...student, letter, kind });
   const res = await fetch(`api/recordings?${params}`, {

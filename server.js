@@ -21,9 +21,11 @@ const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 
 const sessions = new Set();
 
-// Video files are named <letter>-<time>.webm for a missed letter and
+// Video files are named <letter>-<time>.webm after a missed name,
+// <letter>-sound-<time>.webm when the sound wasn't heard right, and
 // <letter>-practice-<time>.webm for the practice "Say it" step.
-const VIDEO_FILE = /^([A-Z])-(practice-)?(\d+)\.(webm|mp4)$/;
+const VIDEO_FILE = /^([A-Z])-(?:(practice|sound)-)?(\d+)\.(webm|mp4)$/;
+const VIDEO_KINDS = ['missed', 'sound', 'practice'];
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -133,8 +135,8 @@ async function readAttempts(dir) {
 async function listVideos(dir) {
   try {
     const files = await fsp.readdir(path.join(dir, 'videos'));
-    return files.map((file) => VIDEO_FILE.exec(file)).filter(Boolean).map(([file, letter, practice, stamp]) => ({
-      file, letter, kind: practice ? 'practice' : 'missed', recorded: new Date(Number(stamp)).toISOString(),
+    return files.map((file) => VIDEO_FILE.exec(file)).filter(Boolean).map(([file, letter, kind, stamp]) => ({
+      file, letter, kind: kind || 'missed', recorded: new Date(Number(stamp)).toISOString(),
     })).sort((a, b) => b.recorded.localeCompare(a.recorded));
   } catch {
     return [];
@@ -142,43 +144,66 @@ async function listVideos(dir) {
 }
 
 const CHECKERS = ['app', 'teacher', 'review'];
+const TEST_NAMES = ['name', 'sound'];
 
-// Who decided a step: 'app', 'teacher', or 'review' (teacher listening required).
-// Older records only had checkedBy ('app' or 'adult').
-function checkedBy(attempt, step) {
-  return attempt[`${step}By`] || (attempt.checkedBy === 'adult' ? 'teacher' : 'app');
+// Each saved line is one answer: { letter, test: 'name' or 'sound', correct, by, heard, ... }.
+// `by` is who decided: 'app', 'teacher', or 'review' (teacher listening required).
+// Older lines held a letter's name and sound answers together; this turns any
+// line into its answers. `index` is the line number, used for teacher reviews.
+function answersFrom(record, index) {
+  const base = {
+    index,
+    letter: record.letter,
+    heard: record.heard ?? [record.heardName, record.heardSound].filter(Boolean).join(' / '),
+    retry: Boolean(record.retry),
+    grade: record.grade || '',
+    testDate: record.testDate || '',
+    at: record.at,
+  };
+  if (record.test) return [{ ...base, test: record.test, correct: Boolean(record.correct), by: record.by || 'app' }];
+  return TEST_NAMES.map((test) => ({
+    ...base,
+    test,
+    correct: Boolean(record[`${test}Correct`]),
+    by: record[`${test}By`] || (record.checkedBy === 'adult' ? 'teacher' : 'app'),
+  }));
 }
 
-// Per-letter totals for the teacher: how often each letter was tried and missed.
-// Every right answer earns a star (one for the name, one for the sound), so
-// `stars` is the student's running total. `chart` marks which letters' name
-// and sound they have ever gotten right, for the star chart.
-function summarize(attempts) {
+// Totals for the teacher and the star chart. Every right answer earns a star, so
+// `stars` is the running total; `chart` marks which letters' name and sound have
+// ever been right. `letters[L].name` / `.sound` hold per-letter counts, and
+// `names` / `sounds` list letters by status.
+function summarize(answers) {
   const letters = {};
   const chart = {};
   let stars = 0;
-  for (const a of attempts) {
-    const s = (letters[a.letter] ||= { tries: 0, nameMissed: 0, soundMissed: 0, lastPassed: false, everMissed: false, listen: false });
+  for (const a of answers) {
+    const s = ((letters[a.letter] ||= {})[a.test] ||= { tries: 0, missed: 0, lastCorrect: false, everMissed: false, listen: false });
     s.tries++;
-    if (!a.nameCorrect) s.nameMissed++;
-    if (!a.soundCorrect) s.soundMissed++;
-    s.lastPassed = Boolean(a.nameCorrect && a.soundCorrect);
-    if (!s.lastPassed) s.everMissed = true;
-    // The latest try is waiting for the teacher to listen.
-    s.listen = ['name', 'sound'].some((step) => checkedBy(a, step) === 'review');
-    const c = (chart[a.letter] ||= { name: false, sound: false });
-    if (a.nameCorrect) { c.name = true; stars++; }
-    if (a.soundCorrect) { c.sound = true; stars++; }
+    s.lastCorrect = a.correct;
+    s.listen = a.by === 'review';
+    if (!a.correct && !s.listen) {
+      s.missed++;
+      s.everMissed = true;
+    }
+    if (a.correct) {
+      (chart[a.letter] ||= { name: false, sound: false })[a.test] = true;
+      stars++;
+    }
   }
-  const all = Object.keys(letters).sort();
-  const needsHelp = all.filter((l) => !letters[l].lastPassed);
-  const practiced = all.filter((l) => letters[l].lastPassed && letters[l].everMissed);
-  const mastered = all.filter((l) => letters[l].lastPassed && !letters[l].everMissed);
-  // Every answer still waiting for the teacher to listen (oldest first).
-  const toReview = attempts.flatMap((a, index) => ['name', 'sound']
-    .filter((step) => checkedBy(a, step) === 'review')
-    .map((step) => ({ index, step, letter: a.letter, testDate: a.testDate || '', at: a.at })));
-  return { letters, needsHelp, practiced, mastered, stars, chart, toReview };
+  const byTest = (test) => {
+    const tried = ALPHABET.filter((l) => letters[l]?.[test]);
+    const st = (l) => letters[l][test];
+    return {
+      known: tried.filter((l) => st(l).lastCorrect && !st(l).everMissed),
+      practiced: tried.filter((l) => st(l).lastCorrect && st(l).everMissed),
+      needsHelp: tried.filter((l) => !st(l).lastCorrect && !st(l).listen),
+      listen: tried.filter((l) => st(l).listen),
+    };
+  };
+  const toReview = answers.filter((a) => a.by === 'review')
+    .map(({ index, test, letter, testDate, at }) => ({ index, step: test, letter, testDate, at }));
+  return { letters, chart, stars, names: byTest('name'), sounds: byTest('sound'), toReview };
 }
 
 async function loadStudent(id) {
@@ -186,10 +211,10 @@ async function loadStudent(id) {
   if (!dir) return null;
   const profile = JSON.parse(await fsp.readFile(path.join(dir, 'profile.json'), 'utf8').catch(() => '{}'));
   const [first, last] = profile.first ? [profile.first, profile.last || ''] : splitName(profile.name || id);
-  const attempts = (await readAttempts(dir)).map((a, index) => ({ ...a, index }));
+  const answers = (await readAttempts(dir)).flatMap(answersFrom);
   return {
     id, first, last, name: profile.name || id, grade: profile.grade || '', created: profile.created,
-    attempts, videos: await listVideos(dir), ...summarize(attempts),
+    answers, videos: await listVideos(dir), ...summarize(answers),
   };
 }
 
@@ -214,46 +239,48 @@ function localTime(iso) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-const lastTestDate = (s) => s.attempts.map((a) => a.testDate || localTime(a.at).slice(0, 10)).sort().at(-1) || '';
+const lastTestDate = (s) => s.answers.map((a) => a.testDate || localTime(a.at).slice(0, 10)).sort().at(-1) || '';
 
-// Excel workbook of results, sorted by last name: a summary, an A-Z grid, and every try.
+// Excel workbook, sorted by last name: a summary, a names grid, a sounds grid, and every answer.
 function resultsWorkbook(students) {
-  const LISTEN = { v: 'Teacher listening required', style: 'practiced' };
-  const result = (a, step) => (checkedBy(a, step) === 'review'
-    ? { v: 'Listen', style: 'practiced' }
-    : { v: a[`${step}Correct`] ? 'Yes' : 'No', style: a[`${step}Correct`] ? 'good' : 'help' });
-  const checker = (a, step) => ({ app: 'App', teacher: 'Teacher', review: LISTEN })[checkedBy(a, step)];
+  const LISTEN = { v: 'Teacher listening required', style: 'listen' };
+  const result = (a) => (a.by === 'review'
+    ? { v: 'Listen', style: 'listen' }
+    : { v: a.correct ? 'Yes' : 'No', style: a.correct ? 'good' : 'help' });
+  const checker = (a) => ({ app: 'App', teacher: 'Teacher', review: LISTEN })[a.by] || 'App';
+  const known = (t) => [...t.known, ...t.practiced].sort().join(' ');
   const summary = [
-    ['Last name', 'First name', 'Grade', 'Last test date', 'Stars', 'Passed first time', 'Passed after practice', 'Needs help', 'Teacher listening required', 'Letters tried', 'Videos'],
+    ['Last name', 'First name', 'Grade', 'Last test date', 'Stars', 'Names known', 'Names need help', 'Sounds known', 'Sounds need help', 'Teacher listening required', 'Videos'],
     ...students.map((s) => [
-      s.last, s.first, s.grade, lastTestDate(s), s.stars, s.mastered.join(' '), s.practiced.join(' '), s.needsHelp.join(' '),
-      s.toReview.length ? { v: s.toReview.map((r) => `${r.letter} ${r.step}`).join(', '), style: 'practiced' } : '',
-      Object.keys(s.letters).length, s.videos.length,
+      s.last, s.first, s.grade, lastTestDate(s), s.stars,
+      known(s.names), s.names.needsHelp.join(' '), known(s.sounds), s.sounds.needsHelp.join(' '),
+      s.toReview.length ? { v: s.toReview.map((r) => `${r.letter} ${r.step}`).join(', '), style: 'listen' } : '',
+      s.videos.length,
     ]),
   ];
-  const grid = [
+  const grid = (test) => [
     ['Last name', 'First name', 'Grade', ...ALPHABET],
     ...students.map((s) => [s.last, s.first, s.grade, ...ALPHABET.map((l) => {
-      const stats = s.letters[l];
-      if (!stats) return '';
-      if (stats.listen) return { v: 'Listen', style: 'practiced' };
-      if (!stats.lastPassed) return { v: 'Help', style: 'help' };
-      return stats.everMissed ? { v: 'Practiced', style: 'practiced' } : { v: 'Passed', style: 'good' };
+      const st = s.letters[l]?.[test];
+      if (!st) return '';
+      if (st.listen) return { v: 'Listen', style: 'listen' };
+      if (!st.lastCorrect) return { v: 'Help', style: 'help' };
+      return st.everMissed ? { v: 'Practiced', style: 'practiced' } : { v: 'Known', style: 'good' };
     })]),
   ];
-  const tries = [
-    ['Last name', 'First name', 'Grade', 'Test date', 'Time', 'Letter', 'Name right', 'Sound right', 'Name checked by', 'Sound checked by', 'After practice', 'App heard'],
-    ...students.flatMap((s) => s.attempts.map((a) => [
+  const answers = [
+    ['Last name', 'First name', 'Grade', 'Test date', 'Time', 'Test', 'Letter', 'Right', 'Checked by', 'After practice', 'App heard'],
+    ...students.flatMap((s) => s.answers.map((a) => [
       s.last, s.first, a.grade || s.grade, a.testDate || localTime(a.at).slice(0, 10), localTime(a.at).slice(11),
-      a.letter, result(a, 'name'), result(a, 'sound'), checker(a, 'name'), checker(a, 'sound'),
-      a.retry ? 'Yes' : '',
-      a.heard ?? [a.heardName, a.heardSound].filter(Boolean).join(' / '),
+      a.test === 'name' ? 'Name' : 'Sound', a.letter, result(a), checker(a), a.retry ? 'Yes' : '', a.heard,
     ])),
   ];
+  const gridWidths = [16, 14, 7, ...ALPHABET.map(() => 9)];
   return buildXlsx([
-    { name: 'Summary', rows: summary, widths: [16, 14, 7, 14, 7, 28, 22, 22, 26, 13, 8] },
-    { name: 'Letters A-Z', rows: grid, widths: [16, 14, 7, ...ALPHABET.map(() => 9)] },
-    { name: 'All tries', rows: tries, widths: [16, 14, 7, 12, 7, 7, 11, 11, 24, 24, 13, 36] },
+    { name: 'Summary', rows: summary, widths: [16, 14, 7, 14, 7, 28, 22, 28, 22, 26, 8] },
+    { name: 'Names A-Z', rows: grid('name'), widths: gridWidths },
+    { name: 'Sounds A-Z', rows: grid('sound'), widths: gridWidths },
+    { name: 'All answers', rows: answers, widths: [16, 14, 7, 12, 7, 7, 7, 8, 24, 13, 36] },
   ]);
 }
 
@@ -297,26 +324,27 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { stars: found?.stars || 0, chart: found?.chart || {}, returning: Boolean(found) });
   }
 
-  // Student: save one letter result. Replies with their star total and star chart.
+  // Student: save one answer (a letter's name or its sound). Replies with their
+  // star total and star chart.
   if (req.method === 'POST' && pathname === '/api/attempts') {
     const body = await readJson(req);
     if (!isLetter(body.letter)) return sendJson(res, 400, { error: 'Bad letter' });
+    if (!TEST_NAMES.includes(body.test)) return sendJson(res, 400, { error: 'test must be "name" or "sound"' });
     const student = studentFromInput(body);
     const { id, dir } = await ensureStudent(student);
     const record = {
       grade: student.grade,
       testDate: student.testDate,
       letter: body.letter,
-      nameCorrect: Boolean(body.nameCorrect),
-      soundCorrect: Boolean(body.soundCorrect),
+      test: body.test,
+      correct: Boolean(body.correct),
+      by: CHECKERS.includes(body.by) ? body.by : 'app',
       heard: String(body.heard || '').slice(0, 300),
       retry: Boolean(body.retry),
-      nameBy: CHECKERS.includes(body.nameBy) ? body.nameBy : 'app',
-      soundBy: CHECKERS.includes(body.soundBy) ? body.soundBy : 'app',
       at: new Date().toISOString(),
     };
-    if (record.nameBy === 'review') record.nameCorrect = false;
-    if (record.soundBy === 'review') record.soundCorrect = false;
+    // An answer waiting for the teacher never counts as right by itself.
+    if (record.by === 'review') record.correct = false;
     await fsp.appendFile(path.join(dir, 'attempts.jsonl'), JSON.stringify(record) + '\n');
     const { stars, chart } = await loadStudent(id);
     return sendJson(res, 201, { ok: true, stars, chart });
@@ -327,14 +355,14 @@ async function handleApi(req, res, url) {
     const student = studentFromInput(query);
     const letter = query.letter;
     if (!isLetter(letter)) return sendJson(res, 400, { error: 'Bad letter' });
-    const practice = query.kind === 'practice';
+    const kind = VIDEO_KINDS.includes(query.kind) ? query.kind : 'missed';
     const type = req.headers['content-type'] || '';
     const ext = type.startsWith('video/mp4') ? 'mp4' : type.startsWith('video/webm') ? 'webm' : null;
     if (!ext) return sendJson(res, 415, { error: 'Video must be webm or mp4' });
     const video = await readBody(req, MAX_VIDEO_BYTES);
     if (!video.length) return sendJson(res, 400, { error: 'Empty video' });
     const { dir } = await ensureStudent(student);
-    const file = `${letter}-${practice ? 'practice-' : ''}${Date.now()}.${ext}`;
+    const file = `${letter}-${kind === 'missed' ? '' : `${kind}-`}${Date.now()}.${ext}`;
     await fsp.writeFile(path.join(dir, 'videos', file), video);
     return sendJson(res, 201, { ok: true, file });
   }
@@ -363,8 +391,8 @@ async function handleApi(req, res, url) {
   if (req.method === 'GET' && pathname === '/api/teacher/students') {
     const students = (await loadAllStudents()).map((s) => ({
       id: s.id, name: s.name, first: s.first, last: s.last, grade: s.grade, lastTestDate: lastTestDate(s),
-      needsHelp: s.needsHelp, practiced: s.practiced, mastered: s.mastered, stars: s.stars, toReview: s.toReview.length,
-      videoCount: s.videos.length, lastActive: s.attempts.at(-1)?.at || s.created || null,
+      names: s.names, sounds: s.sounds, stars: s.stars, toReview: s.toReview.length,
+      videoCount: s.videos.length, lastActive: s.answers.at(-1)?.at || s.created || null,
     }));
     return sendJson(res, 200, { students });
   }
@@ -389,12 +417,13 @@ async function handleApi(req, res, url) {
     if (!dir) return sendJson(res, 404, { error: 'No such student' });
     const { index, step, correct } = await readJson(req);
     const attempts = await readAttempts(dir);
-    if (!['name', 'sound'].includes(step) || !Number.isInteger(index) || !attempts[index]) {
+    const record = Number.isInteger(index) && attempts[index];
+    if (!TEST_NAMES.includes(step) || !record || (record.test && record.test !== step)) {
       return sendJson(res, 400, { error: 'Bad review' });
     }
-    Object.assign(attempts[index], {
-      [`${step}Correct`]: Boolean(correct), [`${step}By`]: 'teacher', [`${step}ReviewedAt`]: new Date().toISOString(),
-    });
+    const reviewedAt = new Date().toISOString();
+    if (record.test) Object.assign(record, { correct: Boolean(correct), by: 'teacher', reviewedAt });
+    else Object.assign(record, { [`${step}Correct`]: Boolean(correct), [`${step}By`]: 'teacher', [`${step}ReviewedAt`]: reviewedAt });
     const file = path.join(dir, 'attempts.jsonl');
     await fsp.writeFile(`${file}.tmp`, attempts.map((a) => JSON.stringify(a)).join('\n') + '\n');
     await fsp.rename(`${file}.tmp`, file);
@@ -405,7 +434,7 @@ async function handleApi(req, res, url) {
   if (req.method === 'GET' && studentMatch) {
     const s = await loadStudent(studentMatch[1]);
     if (!s) return sendJson(res, 404, { error: 'No such student' });
-    return sendJson(res, 200, { ...s, attempts: s.attempts.slice(-200).reverse() });
+    return sendJson(res, 200, { ...s, answers: s.answers.slice(-300).reverse() });
   }
 
   const videoMatch = /^\/api\/teacher\/videos\/([^/]+)\/([^/]+)$/.exec(pathname);

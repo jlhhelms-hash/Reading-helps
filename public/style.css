@@ -343,6 +343,29 @@ canvas.trace {
 .chart-cell.fresh { animation: sparkle 1.2s ease-in-out 3; }
 @keyframes sparkle { 50% { transform: scale(1.15) rotate(-5deg); box-shadow: 0 0 0 6px color-mix(in srgb, var(--gold) 45%, transparent); } }
 
+/* Name test / Sound test choice on the welcome screen */
+.test-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; width: 100%; max-width: 640px; }
+.test-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 18px 12px;
+  border: none;
+  border-radius: 28px;
+  color: var(--on-color);
+  box-shadow: 0 8px 0 rgba(31, 42, 68, 0.25);
+}
+.test-btn:active { transform: translateY(4px); box-shadow: 0 4px 0 rgba(31, 42, 68, 0.25); }
+.test-btn.name-test { background: var(--c3); }
+.test-btn.sound-test { background: var(--c4); }
+.test-icon { font-size: 2.6rem; line-height: 1.1; }
+.test-title { font-family: "Baloo 2", Andika, system-ui, sans-serif; font-size: 1.8rem; font-weight: 800; }
+.test-sub { font-size: 1rem; opacity: 0.95; }
+@media (max-width: 520px) {
+  .test-choice { grid-template-columns: 1fr; }
+}
+
 /* Colorful letters background on the start and welcome screens */
 body.letters-bg {
   background-image: url("images/letters-background.jpg");

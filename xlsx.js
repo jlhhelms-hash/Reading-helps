@@ -3,11 +3,11 @@
 //
 // buildXlsx([{ name, widths: [18, 12], rows: [[cell, ...], ...] }]) -> Buffer
 // A cell is a string, a number, or { v, style } where style is one of
-// 'header', 'good', 'practiced', 'help'. The first row is frozen.
+// 'header', 'good', 'practiced', 'help', 'listen'. The first row is frozen.
 
 import zlib from 'node:zlib';
 
-const STYLE_IDS = { header: 1, good: 2, practiced: 3, help: 4 };
+const STYLE_IDS = { header: 1, good: 2, practiced: 3, help: 4, listen: 5 };
 
 const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
   let c = n;
@@ -104,14 +104,14 @@ function sheetXml({ rows, widths = [] }) {
 const STYLES = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
   '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
   '<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>' +
-  '<fills count="6"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>' +
-  ['FFC6EFCE', 'FFFFEB9C', 'FFFFC7CE', 'FFDDEBF7']
+  '<fills count="7"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>' +
+  ['FFC6EFCE', 'FFFFEB9C', 'FFFFC7CE', 'FFDDEBF7', 'FFBDD7EE']
     .map((rgb) => `<fill><patternFill patternType="solid"><fgColor rgb="${rgb}"/><bgColor indexed="64"/></patternFill></fill>`).join('') +
   '</fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
   '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
-  '<cellXfs count="5"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+  '<cellXfs count="6"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
   '<xf numFmtId="0" fontId="1" fillId="5" borderId="0" xfId="0" applyFont="1" applyFill="1"/>' +
-  [2, 3, 4].map((fill) => `<xf numFmtId="0" fontId="0" fillId="${fill}" borderId="0" xfId="0" applyFill="1" applyAlignment="1"><alignment horizontal="center"/></xf>`).join('') +
+  [2, 3, 4, 6].map((fill) => `<xf numFmtId="0" fontId="0" fillId="${fill}" borderId="0" xfId="0" applyFill="1" applyAlignment="1"><alignment horizontal="center"/></xf>`).join('') +
   '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
 
 export function buildXlsx(sheets) {

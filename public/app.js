@@ -1,13 +1,14 @@
-// Student app: show a letter, listen for its name and sound, and when the
-// student misses, record a short video for the teacher and run practice.
+// Student app. After entering their details the student picks the name test or
+// the sound test. Each shows letters one at a time and listens for the answer.
+// A missed name gets a video, practice and a retry; a sound the app can't hear
+// right is recorded on the webcam for the teacher, then the next letter comes.
 
-import { ALPHABET, LETTERS, heardLetterName, heardLetterSound, shuffle } from './letters.js';
+import { ALPHABET, heardLetterName, heardLetterSound, shuffle } from './letters.js';
 import { ACTIVITIES, speak } from './activities.js';
 import { openCamera, recordClip, stopCamera, uploadClip } from './recorder.js';
 import { isPlaying, musicWanted, setMusicWanted, startMusic, stopMusic } from './music.js';
 import { chime, confetti, flyStar, letterColor, popTwinkle, renderStarChart } from './fun.js';
 
-const TRIES = 3; // the first try plus up to 2 retries
 const LISTEN_MS = 5000; // longest the app listens on one try
 const QUIET_MS = 700; // stop listening this long after the student stops talking
 const RECORD_SECONDS = 5;
@@ -17,7 +18,7 @@ const $ = (id) => document.getElementById(id);
 // student is { first, last, grade, testDate }. stars is the student's star total;
 // chart marks which letters' name and sound they have gotten right.
 const state = {
-  student: null, adultMode: !Recognition, practiced: [], passed: 0,
+  student: null, test: 'name', adultMode: !Recognition, practiced: [], passed: 0,
   stars: 0, chart: {}, starsToday: 0, newChart: [],
 };
 
@@ -159,32 +160,39 @@ function setFeedback(text, kind = '') {
   f.className = `feedback ${kind}`;
 }
 
-const STEPS = {
+// The two tests. Students do the name test first, then the sound test.
+const TESTS = {
   name: {
+    title: 'Name test',
+    pill: '🔤 Letter name',
+    tries: 3, // the first try plus up to 2 retries
     question: 'What is the name of this letter?',
+    hint: 'Tap “Say it”, then say the letter’s name.',
     check: heardLetterName,
     teacher: (letter) => `did they say the letter name "${letter}" correctly?`,
     wrong: (letter) => `This letter is ${letter}.`,
+    done: (n, total) => `You knew ${n} of ${total} letter names`,
   },
   sound: {
+    title: 'Sound test',
+    pill: '🔊 Letter sound',
+    tries: 2, // then the webcam records the sound for the teacher
     question: 'What is the sound of this letter?',
+    hint: 'Tap “Say it”, then make the sound nice and loud.',
     check: heardLetterSound,
     teacher: (letter) => `did they say the ${letter} sound correctly?`,
-    wrong: (letter) => {
-      const [word] = LETTERS[letter].words[0];
-      return LETTERS[letter].soundAtEnd ? `${letter} makes the sound at the end of ${word}.` : `${letter} makes the sound at the start of ${word}.`;
-    },
+    done: (n, total) => `You knew ${n} of ${total} letter sounds`,
   },
 };
 
 // When the app can't hear an answer, the teacher can mark it right or wrong now,
 // or the student continues and it is flagged "Teacher listening required".
 // Resolves with 'correct', 'wrong' or 'later'.
-async function teacherCheck(letter, step, reason) {
+async function teacherCheck(letter, test, reason) {
   $('say-btn').hidden = true;
   $('teacher-check').hidden = false;
   $('teacher-reason').textContent = reason;
-  $('teacher-question').textContent = `Teacher: ${STEPS[step].teacher(letter)}`;
+  $('teacher-question').textContent = `Teacher: ${TESTS[test].teacher(letter)}`;
   const decision = await Promise.race([
     nextClick($('teacher-yes')).then(() => 'correct'),
     nextClick($('teacher-no')).then(() => 'wrong'),
@@ -195,15 +203,15 @@ async function teacherCheck(letter, step, reason) {
   return decision;
 }
 
-// One question: the letter's name, or its sound. The student taps "Say it" and
-// answers: a first try plus up to 2 retries. If the app never hears an answer it
-// can read, the teacher decides. Returns { correct, heard, by } where `by` is
-// 'app', 'teacher', or 'review' (teacher listening required).
-async function askStep(letter, step) {
-  const { question, check } = STEPS[step];
-  $(`step-${step}`).classList.add('active');
+// Ask the question for one letter. The student taps "Say it" and answers, with
+// TESTS[test].tries tries. Returns { correct, heard, by } where `by` is 'app',
+// 'teacher', 'review' (teacher listening required), or 'video' (the sound wasn't
+// heard right: record it on the webcam for the teacher).
+async function askLetter(letter, test) {
+  const { question, hint, check, tries: TRIES } = TESTS[test];
+  $('test-pill').className = 'step active';
   $('prompt').textContent = question;
-  setFeedback(step === 'sound' ? 'Tap “Say it”, then make the sound nice and loud.' : 'Tap “Say it”, then answer.');
+  setFeedback(hint);
   await speak(question);
 
   const heardLog = [];
@@ -242,19 +250,19 @@ async function askStep(letter, step) {
           : "I didn't hear you. Try again, nice and loud!", 'oops');
     }
   }
+  const heard = heardLog.join(' / ');
+
+  // The sound wasn't heard right after both tries: the webcam records it for the teacher.
+  if (test === 'sound' && !state.adultMode) return { correct: false, heard, by: 'video' };
 
   // The app heard words, but they were wrong: that's the app's answer.
-  if (heardWords && !state.adultMode) return { correct: false, heard: heardLog.join(' / '), by: 'app' };
+  if (heardWords && !state.adultMode) return { correct: false, heard, by: 'app' };
 
   // The app never heard an answer it could read.
   setFeedback('');
-  const reason = state.adultMode ? "The app can't listen on this computer." : `The app couldn't hear the ${step} clearly.`;
-  const decision = await teacherCheck(letter, step, reason);
-  return {
-    correct: decision === 'correct',
-    heard: heardLog.join(' / '),
-    by: decision === 'later' ? 'review' : 'teacher',
-  };
+  const reason = state.adultMode ? "The app can't listen on this computer." : `The app couldn't hear the ${test} clearly.`;
+  const decision = await teacherCheck(letter, test, reason);
+  return { correct: decision === 'correct', heard, by: decision === 'later' ? 'review' : 'teacher' };
 }
 
 // Saves the result. Resolves with { stars, chart } from the server, or null if saving failed.
@@ -284,37 +292,26 @@ function cheerOwl() {
 }
 
 // A right answer: the star pops out of the letter and flies to the counter.
-// No spoken praise, so the next question comes quickly.
-async function earnStar(letter, step) {
+// No spoken praise, so the next letter comes quickly.
+async function earnStar(letter, test) {
   state.stars++;
   state.starsToday++;
-  (state.chart[letter] ||= { name: false, sound: false })[step] = true;
+  (state.chart[letter] ||= { name: false, sound: false })[test] = true;
   if (!state.newChart.includes(letter)) state.newChart.push(letter);
-  $(`step-${step}`).className = 'step done';
+  $('test-pill').className = 'step done';
+  $('letter-card').classList.add('pass');
   setFeedback('⭐ You earned a star! ⭐', 'yay');
   cheerOwl();
-  confetti(step === 'sound' ? 100 : 60);
+  confetti(80);
   chime();
   await flyStar($('letter-card'), $('star-count'));
   showStarCount();
+  await wait(300);
 }
 
-async function missStep(letter, step, by) {
-  $(`step-${step}`).className = 'step missed';
-  if (by === 'review') {
-    // It may have been right, so don't teach as if it was wrong.
-    setFeedback('Your teacher will listen to this one later.', 'oops');
-    await wait(900);
-    return;
-  }
-  $('prompt').textContent = STEPS[step].wrong(letter);
-  setFeedback("That's OK! We'll practice it.", 'oops');
-  await speak(STEPS[step].wrong(letter));
-}
-
-// Test one letter: first its name, then its sound, with a star for each right answer.
-// Returns true when both were right.
-async function testLetter(letter, retry) {
+// Test one letter. Returns 'passed', 'video' (the sound went to the teacher on
+// video), 'review' (teacher will listen later) or 'missed' (needs practice).
+async function testLetter(letter, test, retry) {
   show('letter');
   $('letter-upper').textContent = letter;
   $('letter-lower').textContent = letter.toLowerCase();
@@ -325,76 +322,106 @@ async function testLetter(letter, retry) {
   card.style.animation = 'none';
   void card.offsetWidth;
   card.style.animation = '';
-  ['name', 'sound'].forEach((s) => { $(`step-${s}`).className = 'step'; });
 
-  const name = await askStep(letter, 'name');
-  if (name.correct) await earnStar(letter, 'name');
-  else await missStep(letter, 'name', name.by);
+  const answer = await askLetter(letter, test);
+  let outcome;
+  if (answer.correct) {
+    await earnStar(letter, test);
+    outcome = 'passed';
+  } else if (answer.by === 'video' || (test === 'sound' && answer.by === 'teacher')) {
+    // The student says the sound on camera for the teacher, then goes on.
+    // ('teacher' here means a teacher already marked it wrong, so no review is needed.)
+    $('test-pill').className = 'step missed';
+    await recordVideo(letter, 'sound');
+    if (answer.by === 'video') answer.by = 'review';
+    outcome = 'video';
+  } else if (answer.by === 'review') {
+    // It may have been right, so don't teach as if it was wrong.
+    $('test-pill').className = 'step missed';
+    setFeedback('Your teacher will listen to this one later.', 'oops');
+    await wait(900);
+    outcome = 'review';
+  } else {
+    $('test-pill').className = 'step missed';
+    $('prompt').textContent = TESTS.name.wrong(letter);
+    setFeedback("That's OK! We'll practice it.", 'oops');
+    await speak(`${TESTS.name.wrong(letter)} Let's practice it together!`);
+    outcome = 'missed';
+  }
 
-  const sound = await askStep(letter, 'sound');
-  if (sound.correct) await earnStar(letter, 'sound');
-  else await missStep(letter, 'sound', sound.by);
-
-  const saved = await saveAttempt({
-    letter, retry, nameCorrect: name.correct, soundCorrect: sound.correct,
-    nameBy: name.by, soundBy: sound.by,
-    heard: [name.heard && `name: ${name.heard}`, sound.heard && `sound: ${sound.heard}`].filter(Boolean).join(' · '),
-  });
+  const saved = await saveAttempt({ letter, test, retry, correct: answer.correct, by: answer.by, heard: answer.heard });
   if (saved) {
     // The server's count is the real one (it includes other sessions).
     state.stars = saved.stars;
     state.chart = saved.chart;
     showStarCount();
   }
-
-  const passed = name.correct && sound.correct;
-  if (passed) {
-    card.classList.add('pass');
-    await wait(500);
-  } else {
-    $('prompt').textContent = `Let's practice ${letter} together!`;
-    setFeedback('');
-    await speak(`Let's practice ${letter} together!`);
-  }
-  return passed;
+  return outcome;
 }
 
-// Record the student saying the letter and sound, and save it for the teacher.
-async function recordVideo(letter) {
+const VIDEO_TEXT = {
+  // After a missed letter name: record the name, then practice.
+  missed: {
+    prompt: (l) => `Press the button, then say the letter name "${l}".`,
+    say: (l) => `Let's record you saying the letter ${l} for your teacher.`,
+    button: '🔴 Start recording',
+    saved: 'Saved for your teacher! ⭐',
+    failed: "That didn't save, but that's OK. Let's practice!",
+    noCamera: "The camera isn't working, so let's go practice!",
+  },
+  // After the sound wasn't heard right twice: record the sound, then the next letter.
+  sound: {
+    prompt: (l) => `Press the button, then say the sound ${l} makes, nice and loud!`,
+    say: (l) => `Let's record you saying the ${l} sound for your teacher.`,
+    button: '🔴 Record my sound',
+    saved: 'Sent to your teacher! ⭐ On to the next letter!',
+    failed: "That didn't save, but that's OK. On to the next letter!",
+    noCamera: "The camera isn't working. On to the next letter!",
+  },
+};
+
+// Record the student on the webcam and save it for the teacher.
+// `kind` is 'missed' or 'sound' (see VIDEO_TEXT).
+async function recordVideo(letter, kind = 'missed') {
+  const text = VIDEO_TEXT[kind];
   show('record');
-  $('record-prompt').textContent = `Press the button, then say "${letter}" and the sound ${letter} makes.`;
+  $('record-prompt').textContent = text.prompt(letter);
   $('record-status').textContent = '';
   $('countdown').textContent = '';
   const button = $('record-btn');
+  button.textContent = text.button;
   button.hidden = false;
-  button.disabled = false;
+  // Enabled once the camera is on.
+  button.disabled = true;
 
   let stream;
   try {
     stream = await openCamera();
   } catch (err) {
     console.warn('Camera unavailable', err);
-    $('record-status').textContent = "The camera isn't working, so let's go practice!";
+    $('record-status').textContent = text.noCamera;
     button.hidden = true;
     await wait(2500);
     return;
   }
   $('camera').srcObject = stream;
-  speak(`Let's record you saying ${letter} and its sound for your teacher.`);
+  button.disabled = false;
+  speak(text.say(letter));
   await nextClick(button);
   button.disabled = true;
 
-  const clip = await recordClip(stream, RECORD_SECONDS, (text) => { $('countdown').textContent = text; });
+  const clip = await recordClip(stream, RECORD_SECONDS, (tick) => { $('countdown').textContent = tick; });
   stopCamera(stream);
   $('camera').srcObject = null;
 
   $('record-status').textContent = 'Saving…';
   try {
-    await uploadClip(state.student, letter, 'missed', clip);
-    $('record-status').textContent = 'Saved for your teacher! ⭐';
+    await uploadClip(state.student, letter, kind, clip);
+    $('record-status').textContent = text.saved;
+    confetti(30);
   } catch (err) {
     console.warn('Upload failed', err);
-    $('record-status').textContent = "That didn't save, but that's OK. Let's practice!";
+    $('record-status').textContent = text.failed;
   }
   button.hidden = true;
   await wait(2000);
@@ -409,25 +436,28 @@ async function practice(letter) {
   }
 }
 
-async function run(count) {
+// Run the name test or the sound test over a random set of letters.
+async function run(test) {
+  const count = Number($('letter-count').value);
+  state.test = test;
   state.practiced = [];
   state.passed = 0;
   state.starsToday = 0;
   state.newChart = [];
   const letters = shuffle(ALPHABET).slice(0, count);
   $('who').textContent = `👋 ${state.student.first}`;
+  $('test-pill').textContent = TESTS[test].pill;
   showStarCount();
   for (const [i, letter] of letters.entries()) {
     $('progress-fill').style.width = `${(i / letters.length) * 100}%`;
-    if (await testLetter(letter, false)) {
-      state.passed++;
-      continue;
-    }
+    const outcome = await testLetter(letter, test, false);
+    if (outcome === 'passed') state.passed++;
+    // A missed letter name gets a video, practice, and one more try.
+    if (outcome !== 'missed') continue;
     state.practiced.push(letter);
-    await recordVideo(letter);
+    await recordVideo(letter, 'missed');
     await practice(letter);
-    // One more try after practice, then move on either way.
-    if (await testLetter(letter, true)) state.passed++;
+    if ((await testLetter(letter, test, true)) === 'passed') state.passed++;
   }
   $('progress-fill').style.width = '100%';
   showDone(letters.length);
@@ -437,14 +467,20 @@ function showDone(total) {
   show('done');
   const { first } = state.student;
   const n = state.starsToday;
-  $('done-summary').textContent = `You knew ${state.passed} of ${total} letters, ${first}!`;
+  $('done-title').textContent = `🎉 ${TESTS[state.test].title} done!`;
+  $('done-summary').textContent = `${TESTS[state.test].done(state.passed, total)}, ${first}!`;
   $('done-stars').textContent = n
     ? `You earned ${n} ${n === 1 ? 'star' : 'stars'} today! You have ${state.stars} stars in all.`
     : `You have ${state.stars} stars. Let's practice and earn more!`;
+  // After the name test, the sound test is next.
+  const next = state.test === 'name' ? 'sound' : 'name';
+  $('next-test-btn').textContent = state.test === 'name' ? 'Next: Sound test ▶' : 'Name test 🔤';
+  $('next-test-btn').dataset.test = next;
+  $('again-btn').textContent = `${TESTS[state.test].title} again ↻`;
   renderStarChart($('done-chart'), state.chart, state.newChart);
   confetti(n ? 120 : 60);
   if (n) chime();
-  speak(n ? `Great job, ${first}! You earned ${n} ${n === 1 ? 'star' : 'stars'} today!` : `Great job, ${first}!`);
+  speak(n ? `Great job, ${first}! You earned ${n} ${n === 1 ? 'star' : 'stars'}!` : `Great job, ${first}!`);
 }
 
 async function showWelcome() {
@@ -461,10 +497,10 @@ async function showWelcome() {
   show('welcome');
   $('welcome-hello').textContent = returning ? `Welcome back, ${first}!` : `Hi, ${first}! Nice to meet you!`;
   $('welcome-stars').textContent = state.stars
-    ? `You have ${state.stars} ${state.stars === 1 ? 'star' : 'stars'}. Let's earn more!`
-    : 'Say the name and the sound of each letter to earn stars!';
+    ? `You have ${state.stars} ${state.stars === 1 ? 'star' : 'stars'}. Pick a test to earn more!`
+    : 'Start with the Name test, then do the Sound test!';
   renderStarChart($('welcome-chart'), state.chart);
-  speak(returning ? `Welcome back, ${first}!` : `Hi, ${first}! Let's earn some stars!`);
+  speak(returning ? `Welcome back, ${first}! Pick a test.` : `Hi, ${first}! Start with the name test.`);
 }
 
 // "Letter Sounds" title with each letter in a different crayon color.
@@ -493,8 +529,11 @@ $('start-form').addEventListener('submit', (e) => {
   showWelcome();
 });
 
-$('begin-btn').addEventListener('click', () => run(Number($('letter-count').value)));
-$('again-btn').addEventListener('click', () => run(Number($('letter-count').value)));
+$('name-test-btn').addEventListener('click', () => run('name'));
+$('sound-test-btn').addEventListener('click', () => run('sound'));
+$('next-test-btn').addEventListener('click', (e) => run(e.currentTarget.dataset.test));
+$('again-btn').addEventListener('click', () => run(state.test));
+
 function today() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -502,16 +541,16 @@ function today() {
 $('test-date').value = today();
 
 $('switch-btn').addEventListener('click', () => {
-  if (musicWanted()) startMusic();
   $('first-name').value = '';
   $('last-name').value = '';
   $('grade').value = '';
   state.student = null;
   show('start');
-showMusicButton();
-startMusicOnFirstTouch();
+  if (musicWanted()) {
+    startMusic();
+    showMusicButton();
+  }
 });
 
 show('start');
-showMusicButton();
 startMusicOnFirstTouch();

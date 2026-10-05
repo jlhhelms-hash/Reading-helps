@@ -29,7 +29,7 @@
           <button class="plain-btn" id="logout" type="button">Log out</button>
         </div>
       </div>
-      <p class="small">Sorted by last name. The Excel file has three sheets: a summary, an A–Z letter grid, and every try.</p>
+      <p class="small">Sorted by last name. The Excel file has four sheets: a summary, a names grid, a sounds grid, and every answer.</p>
       <div class="student-list" id="student-list"></div>
     </section>
 
@@ -39,9 +39,11 @@
         <a class="plain-btn excel" id="student-export" href="#" download>⬇ Export to Excel</a>
       </div>
       <h1 id="student-name"></h1>
-      <h2>Letters</h2>
-      <div class="legend"><span class="good">Passed first time</span><span class="practiced">Passed after practice</span><span class="help">Needs help</span><span class="listen">Teacher listening required</span><span class="none">Not tried yet</span></div>
-      <div class="letter-grid" id="letter-grid"></div>
+      <div class="legend"><span class="good">Known first time</span><span class="practiced">Known after practice</span><span class="help">Needs help</span><span class="listen">Teacher listening required</span><span class="none">Not tried yet</span></div>
+      <h2>🔤 Letter names</h2>
+      <div class="letter-grid" id="name-grid"></div>
+      <h2>🔊 Letter sounds</h2>
+      <div class="letter-grid" id="sound-grid"></div>
       <div id="review-section" hidden>
         <h2>🎧 Teacher listening required</h2>
         <p class="small">The app couldn't hear these answers. Watch the video, then mark each one. Stars are added for answers marked correct.</p>
@@ -49,10 +51,10 @@
       </div>
       <h2>Videos</h2>
       <div class="videos" id="videos"></div>
-      <h2>Recent tries</h2>
+      <h2>Recent answers</h2>
       <p class="small">"Heard" is what the app's speech recognition wrote down. Use it to spot letters the app may be marking wrong.</p>
       <div class="table-wrap"><table>
-        <thead><tr><th>Test date</th><th>Recorded</th><th>Letter</th><th>Name</th><th>Sound</th><th>Heard</th></tr></thead>
+        <thead><tr><th>Test date</th><th>Recorded</th><th>Test</th><th>Letter</th><th>Right?</th><th>Heard</th></tr></thead>
         <tbody id="attempts"></tbody>
       </table></div>
     </section>
