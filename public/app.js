@@ -22,6 +22,9 @@ const state = {
 
 function show(screen) {
   document.querySelectorAll('.screen').forEach((s) => { s.hidden = s.id !== `screen-${screen}`; });
+  // The colorful letters background is for the start and welcome screens; the
+  // test screens stay calm so the letter stands out.
+  document.body.classList.toggle('letters-bg', screen === 'start' || screen === 'welcome');
 }
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));

@@ -343,6 +343,38 @@ canvas.trace {
 .chart-cell.fresh { animation: sparkle 1.2s ease-in-out 3; }
 @keyframes sparkle { 50% { transform: scale(1.15) rotate(-5deg); box-shadow: 0 0 0 6px color-mix(in srgb, var(--gold) 45%, transparent); } }
 
+/* Colorful letters background on the start and welcome screens */
+body.letters-bg {
+  background-image: url("images/letters-background.jpg");
+  background-size: 540px auto;
+  background-repeat: repeat;
+  background-attachment: fixed;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) body.letters-bg {
+    background-image: linear-gradient(rgba(19, 27, 51, 0.6), rgba(19, 27, 51, 0.6)), url("images/letters-background.jpg");
+    background-size: auto, 540px auto;
+  }
+}
+.letters-bg .title {
+  background: var(--surface);
+  border-radius: 32px;
+  padding: 2px 32px 6px;
+  box-shadow: var(--shadow-soft), 0 0 0 6px color-mix(in srgb, var(--surface) 60%, transparent);
+}
+.letters-bg .owl {
+  background: var(--surface);
+  border-radius: 50%;
+  width: 1.4em;
+  height: 1.4em;
+  display: grid;
+  place-items: center;
+  font-size: 3.4rem;
+  box-shadow: var(--shadow-soft);
+}
+.letters-bg .card, .letters-bg .bubble { box-shadow: 0 12px 34px rgba(31, 42, 68, 0.22); }
+.teacher-link a { background: var(--surface); padding: 6px 16px; border-radius: 999px; box-shadow: var(--shadow-soft); }
+
 /* Celebrations */
 .confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 20; }
 .confetti i {
@@ -370,6 +402,9 @@ canvas.trace {
   .letter-card { padding: 0 24px; }
   .say-btn { min-width: 0; width: 100%; }
   .topbar #who { display: none; }
+  .title { font-size: 9vw; white-space: nowrap; }
+  .letters-bg .title { padding: 2px 18px 6px; }
+  .field-row { grid-template-columns: 1fr; }
 }
 
 /* Teacher page */
