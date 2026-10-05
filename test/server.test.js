@@ -121,6 +121,33 @@ test('bad grade or date values are not stored', async () => {
   assert.deepEqual([odd.grade, odd.attempts[0].grade, odd.attempts[0].testDate], ['', '', '']);
 });
 
+test('teacher listening required: flagged, then marked by the teacher', async () => {
+  const kim = { first: 'Kim', last: 'Lee', grade: 'K', testDate: '2026-10-05' };
+  // The app couldn't hear the K sound and nobody marked it, so it is flagged and earns no star yet.
+  const saved = await (await post('/api/attempts', {
+    ...kim, letter: 'K', nameCorrect: true, soundCorrect: true, nameBy: 'app', soundBy: 'review',
+  })).json();
+  assert.equal(saved.stars, 1, 'a flagged answer never counts as correct by itself');
+
+  const get = await teacherGet();
+  const row = (await (await get('/api/teacher/students')).json()).students.find((s) => s.first === 'Kim');
+  assert.equal(row.toReview, 1);
+  const before = await (await get('/api/teacher/students/kim-lee')).json();
+  assert.deepEqual(before.toReview.map((r) => [r.letter, r.step, r.index]), [['K', 'sound', 0]]);
+  assert.equal(before.letters.K.listen, true);
+
+  const mark = (body) => get('/api/teacher/students/kim-lee/review', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  assert.equal((await mark({ index: 5, step: 'sound', correct: true })).status, 400);
+  assert.equal((await mark({ index: 0, step: 'sound', correct: true })).status, 200);
+
+  const after = await (await get('/api/teacher/students/kim-lee')).json();
+  assert.equal(after.toReview.length, 0);
+  assert.equal(after.stars, 2, 'the star is added once the teacher marks it correct');
+  assert.deepEqual([after.attempts[0].soundBy, after.attempts[0].soundCorrect], ['teacher', true]);
+});
+
 test('excel exports for the class and for one student', async () => {
   const get = await teacherGet();
   const cls = await get('/api/teacher/export.xlsx');

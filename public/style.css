@@ -247,9 +247,22 @@ button:focus-visible { outline: 4px solid var(--gold); outline-offset: 3px; }
 .feedback.yay { color: var(--ok); font-weight: 700; }
 .feedback.oops { color: var(--muted); }
 
-.adult-check { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
-.adult-check p { width: 100%; }
-.adult-check[hidden] { display: none; }
+.teacher-check {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border: 3px dashed var(--line);
+  border-radius: 22px;
+  background: var(--surface);
+  max-width: 560px;
+  width: 100%;
+}
+.teacher-check[hidden] { display: none; }
+.teacher-q { font-weight: 700; }
+.teacher-check .big-btn { font-size: 1.2rem; min-height: 52px; }
+.small-label { font-size: 0.8em; font-weight: 600; opacity: 0.85; }
 
 video.camera {
   width: min(480px, 100%);
@@ -402,11 +415,13 @@ canvas.trace {
 }
 .letter-cell.good { background: var(--ok); color: var(--on-color); }
 .letter-cell.practiced { background: var(--warn); color: #1f2a44; }
+.letter-cell.listen { background: var(--c3); color: var(--on-color); }
 .letter-cell.help { background: var(--no); color: var(--on-color); }
 .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.95rem; color: var(--muted); }
 .legend span::before { content: ""; display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
 .legend .good::before { background: var(--ok); }
 .legend .practiced::before { background: var(--warn); }
+.legend .listen::before { background: var(--c3); }
 .legend .help::before { background: var(--no); }
 .legend .none::before { background: var(--soft); }
 .videos { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
@@ -416,5 +431,10 @@ canvas.trace {
 table { width: 100%; border-collapse: collapse; font-size: 0.95rem; background: var(--surface); border-radius: 12px; }
 th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
 .table-wrap { overflow-x: auto; }
+.review-card { background: var(--surface); border-radius: 14px; padding: 10px; border: 3px solid var(--c3); font-size: 1rem; display: flex; flex-direction: column; gap: 8px; }
+.review-card video { width: 100%; border-radius: 10px; background: #000; }
+.ok-btn { border-color: var(--ok); color: var(--ok); font-weight: 700; }
+.no-btn { border-color: var(--no); color: var(--no); font-weight: 700; }
+.listen-text { color: var(--c3); font-weight: 700; }
 .yes { color: var(--ok); font-weight: 700; }
 .no-text { color: var(--no); font-weight: 700; }

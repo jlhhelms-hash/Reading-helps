@@ -6,7 +6,9 @@ import { ACTIVITIES, speak } from './activities.js';
 import { openCamera, recordClip, stopCamera, uploadClip } from './recorder.js';
 import { chime, confetti, flyStar, letterColor, popTwinkle, renderStarChart } from './fun.js';
 
-const TRIES = 2;
+const TRIES = 3; // the first try plus up to 2 retries
+const LISTEN_MS = 5000; // longest the app listens on one try
+const QUIET_MS = 700; // stop listening this long after the student stops talking
 const RECORD_SECONDS = 5;
 const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -60,7 +62,7 @@ async function startMeter() {
   }
 }
 
-// Listen until the student stops talking (or 7 seconds pass). Resolves with
+// Listen until the student stops talking (or 5 seconds pass). Resolves with
 // { heard, voice }: the recognizer's guesses (the whole thing first, then each
 // piece's alternatives) and whether the microphone picked up a voice at all.
 async function listen() {
@@ -83,12 +85,12 @@ function recognize() {
     rec.maxAlternatives = 5;
     let pieces = [];
     let quiet;
-    const hardStop = setTimeout(() => rec.stop(), 7000);
+    const hardStop = setTimeout(() => rec.stop(), LISTEN_MS);
     rec.onresult = (e) => {
       pieces = [...e.results].map((result) => [...result].map((alt) => alt.transcript.trim()).filter(Boolean));
       // Stop once the student has been quiet for a moment.
       clearTimeout(quiet);
-      quiet = setTimeout(() => rec.stop(), 1500);
+      quiet = setTimeout(() => rec.stop(), QUIET_MS);
     };
     rec.onerror = (e) => {
       clearTimeout(hardStop);
@@ -116,15 +118,13 @@ const STEPS = {
   name: {
     question: 'What is the name of this letter?',
     check: heardLetterName,
-    adult: (letter) => `Grown-up: did they say the letter name "${letter}"?`,
-    right: (letter) => `Yes! That's ${letter}!`,
+    teacher: (letter) => `did they say the letter name "${letter}" correctly?`,
     wrong: (letter) => `This letter is ${letter}.`,
   },
   sound: {
     question: 'What is the sound of this letter?',
     check: heardLetterSound,
-    adult: (letter) => `Grown-up: did they say the ${letter} sound?`,
-    right: (letter) => `Yes! That's the ${letter} sound!`,
+    teacher: (letter) => `did they say the ${letter} sound correctly?`,
     wrong: (letter) => {
       const [word] = LETTERS[letter].words[0];
       return LETTERS[letter].soundAtEnd ? `${letter} makes the sound at the end of ${word}.` : `${letter} makes the sound at the start of ${word}.`;
@@ -132,21 +132,28 @@ const STEPS = {
   },
 };
 
-// Ask a grown-up to judge, for browsers without speech recognition.
-async function adultCheck(letter, step) {
+// When the app can't hear an answer, the teacher can mark it right or wrong now,
+// or the student continues and it is flagged "Teacher listening required".
+// Resolves with 'correct', 'wrong' or 'later'.
+async function teacherCheck(letter, step, reason) {
   $('say-btn').hidden = true;
-  $('adult-check').hidden = false;
-  $('adult-question').textContent = STEPS[step].adult(letter);
-  const yes = nextClick($('adult-yes')).then(() => true);
-  const no = nextClick($('adult-no')).then(() => false);
-  const correct = await Promise.race([yes, no]);
-  $('adult-check').hidden = true;
+  $('teacher-check').hidden = false;
+  $('teacher-reason').textContent = reason;
+  $('teacher-question').textContent = `Teacher: ${STEPS[step].teacher(letter)}`;
+  const decision = await Promise.race([
+    nextClick($('teacher-yes')).then(() => 'correct'),
+    nextClick($('teacher-no')).then(() => 'wrong'),
+    nextClick($('teacher-later')).then(() => 'later'),
+  ]);
+  $('teacher-check').hidden = true;
   $('say-btn').hidden = false;
-  return { correct, heard: '', checkedBy: 'adult' };
+  return decision;
 }
 
 // One question: the letter's name, or its sound. The student taps "Say it" and
-// answers; they get TRIES tries. Returns { correct, heard, checkedBy }.
+// answers: a first try plus up to 2 retries. If the app never hears an answer it
+// can read, the teacher decides. Returns { correct, heard, by } where `by` is
+// 'app', 'teacher', or 'review' (teacher listening required).
 async function askStep(letter, step) {
   const { question, check } = STEPS[step];
   $(`step-${step}`).classList.add('active');
@@ -155,53 +162,54 @@ async function askStep(letter, step) {
   await speak(question);
 
   const heardLog = [];
-  let silences = 0;
-  for (let tries = 0; tries < TRIES;) {
-    if (state.adultMode) return adultCheck(letter, step);
+  let heardWords = false;
+  for (let tries = 0; tries < TRIES && !state.adultMode; tries++) {
     await nextClick($('say-btn'));
     window.speechSynthesis?.cancel();
     popTwinkle();
     $('say-btn').classList.add('listening');
     $('say-btn').textContent = '👂 Listening…';
     // Let the pop finish so the microphone doesn't hear it.
-    await wait(350);
+    await wait(250);
     let heard;
     let voice;
     try {
       ({ heard, voice } = await listen());
     } catch (err) {
-      // No microphone permission or no speech service: let a grown-up check instead.
+      // No microphone permission or no speech service: the teacher checks instead.
       console.warn('Speech recognition error:', err);
       state.adultMode = true;
-      setFeedback("I can't hear right now. A grown-up can check.");
-      continue;
+      break;
     } finally {
       $('say-btn').classList.remove('listening');
       $('say-btn').textContent = '🎤 Say it';
     }
-    if (!heard.length) {
-      // A voice with no words usually means a short sound the recognizer
-      // couldn't read. That uses up a try. Silence doesn't, unless it keeps happening.
-      if (voice || ++silences >= 3) {
-        heardLog.push(voice ? '(voice heard, no words)' : '(nothing heard)');
-        silences = 0;
-        tries++;
-        if (tries < TRIES) {
-          setFeedback(voice
-            ? "I heard you, but I couldn't tell what you said. Say it loud and clear!"
-            : "I still can't hear you. Let's try once more!", 'oops');
-        }
-      } else {
-        setFeedback("I didn't hear you. Tap “Say it” and talk nice and loud!");
-      }
-      continue;
+    if (heard.length) {
+      heardWords = true;
+      heardLog.push(heard[0]);
+      if (check(letter, heard)) return { correct: true, heard: heardLog.join(' / '), by: 'app' };
+    } else {
+      heardLog.push(voice ? '(voice heard, no words)' : '(nothing heard)');
     }
-    heardLog.push(heard[0]);
-    if (check(letter, heard)) return { correct: true, heard: heardLog.join(' / '), checkedBy: 'app' };
-    tries++;
-    if (tries < TRIES) setFeedback(`I heard "${heard[0]}". Try one more time!`, 'oops');
+    if (tries < TRIES - 1) {
+      setFeedback(heard.length ? `I heard "${heard[0]}". Try again!`
+        : voice ? "I heard you, but I couldn't tell what you said. Try again, nice and loud!"
+          : "I didn't hear you. Try again, nice and loud!", 'oops');
+    }
   }
-  return { correct: false, heard: heardLog.join(' / '), checkedBy: 'app' };
+
+  // The app heard words, but they were wrong: that's the app's answer.
+  if (heardWords && !state.adultMode) return { correct: false, heard: heardLog.join(' / '), by: 'app' };
+
+  // The app never heard an answer it could read.
+  setFeedback('');
+  const reason = state.adultMode ? "The app can't listen on this computer." : `The app couldn't hear the ${step} clearly.`;
+  const decision = await teacherCheck(letter, step, reason);
+  return {
+    correct: decision === 'correct',
+    heard: heardLog.join(' / '),
+    by: decision === 'later' ? 'review' : 'teacher',
+  };
 }
 
 // Saves the result. Resolves with { stars, chart } from the server, or null if saving failed.
@@ -231,29 +239,32 @@ function cheerOwl() {
 }
 
 // A right answer: the star pops out of the letter and flies to the counter.
+// No spoken praise, so the next question comes quickly.
 async function earnStar(letter, step) {
   state.stars++;
   state.starsToday++;
   (state.chart[letter] ||= { name: false, sound: false })[step] = true;
-  const isNew = !state.newChart.includes(letter);
-  if (isNew) state.newChart.push(letter);
+  if (!state.newChart.includes(letter)) state.newChart.push(letter);
   $(`step-${step}`).className = 'step done';
-  $('prompt').textContent = STEPS[step].right(letter);
   setFeedback('⭐ You earned a star! ⭐', 'yay');
   cheerOwl();
   confetti(step === 'sound' ? 100 : 60);
   chime();
   await flyStar($('letter-card'), $('star-count'));
   showStarCount();
-  await speak(`${STEPS[step].right(letter)} You earned a star!`);
 }
 
-async function missStep(letter, step) {
+async function missStep(letter, step, by) {
   $(`step-${step}`).className = 'step missed';
+  if (by === 'review') {
+    // It may have been right, so don't teach as if it was wrong.
+    setFeedback('Your teacher will listen to this one later.', 'oops');
+    await wait(900);
+    return;
+  }
   $('prompt').textContent = STEPS[step].wrong(letter);
   setFeedback("That's OK! We'll practice it.", 'oops');
   await speak(STEPS[step].wrong(letter));
-  await wait(500);
 }
 
 // Test one letter: first its name, then its sound, with a star for each right answer.
@@ -273,17 +284,16 @@ async function testLetter(letter, retry) {
 
   const name = await askStep(letter, 'name');
   if (name.correct) await earnStar(letter, 'name');
-  else await missStep(letter, 'name');
-  await wait(400);
+  else await missStep(letter, 'name', name.by);
 
   const sound = await askStep(letter, 'sound');
   if (sound.correct) await earnStar(letter, 'sound');
-  else await missStep(letter, 'sound');
+  else await missStep(letter, 'sound', sound.by);
 
   const saved = await saveAttempt({
     letter, retry, nameCorrect: name.correct, soundCorrect: sound.correct,
+    nameBy: name.by, soundBy: sound.by,
     heard: [name.heard && `name: ${name.heard}`, sound.heard && `sound: ${sound.heard}`].filter(Boolean).join(' · '),
-    checkedBy: name.checkedBy === 'adult' || sound.checkedBy === 'adult' ? 'adult' : 'app',
   });
   if (saved) {
     // The server's count is the real one (it includes other sessions).
@@ -295,14 +305,11 @@ async function testLetter(letter, retry) {
   const passed = name.correct && sound.correct;
   if (passed) {
     card.classList.add('pass');
-    $('prompt').textContent = `You know ${letter}! 🎉`;
-    setFeedback('Two stars! On to the next letter!', 'yay');
-    await wait(1200);
+    await wait(500);
   } else {
     $('prompt').textContent = `Let's practice ${letter} together!`;
     setFeedback('');
     await speak(`Let's practice ${letter} together!`);
-    await wait(500);
   }
   return passed;
 }

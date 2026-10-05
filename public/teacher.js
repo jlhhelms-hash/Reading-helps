@@ -43,7 +43,7 @@ async function loadList() {
   }
   list.replaceChildren(...students.map((s) => el('button', { class: 'student-row', type: 'button', onclick: () => loadStudent(s.id) },
     el('strong', {}, s.last ? `${s.last}, ${s.first}` : s.first),
-    el('span', { class: 'meta' }, `⭐ ${s.stars} · 🎥 ${s.videoCount}`),
+    el('span', { class: 'meta' }, [s.toReview && `🎧 ${s.toReview} to listen`, `⭐ ${s.stars}`, `🎥 ${s.videoCount}`].filter(Boolean).join(' · ')),
     el('span', {}, s.needsHelp.length ? `Needs help: ${s.needsHelp.join(' ')}` : 'No letters need help'),
     el('span', { class: 'meta' }, [gradeLabel(s.grade), s.lastTestDate && `tested ${s.lastTestDate}`].filter(Boolean).join(' · ')))));
 }
@@ -56,11 +56,32 @@ async function loadStudent(id) {
 
   $('letter-grid').replaceChildren(...ALPHABET.map((letter) => {
     const stats = s.letters[letter];
-    const cls = !stats ? '' : !stats.lastPassed ? 'help' : stats.everMissed ? 'practiced' : 'good';
+    const cls = !stats ? '' : stats.listen ? 'listen' : !stats.lastPassed ? 'help' : stats.everMissed ? 'practiced' : 'good';
     const title = stats
       ? `${letter}: ${stats.tries} tries, name missed ${stats.nameMissed}, sound missed ${stats.soundMissed}`
       : `${letter}: not tried yet`;
     return el('div', { class: `letter-cell ${cls}`, title }, letter);
+  }));
+
+  // Answers the app couldn't hear: the teacher watches the video, then marks them.
+  $('review-section').hidden = !s.toReview.length;
+  $('review-list').replaceChildren(...s.toReview.map((r) => {
+    const clip = s.videos.find((v) => v.letter === r.letter && v.recorded >= r.at) || s.videos.find((v) => v.letter === r.letter);
+    const decide = async (correct) => {
+      await api(`students/${encodeURIComponent(id)}/review`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ index: r.index, step: r.step, correct }),
+      });
+      loadStudent(id);
+    };
+    return el('div', { class: 'review-card' },
+      el('div', {}, el('strong', {}, `Letter ${r.letter} · ${r.step}`), ` · ${r.testDate || when(r.at)}`),
+      clip
+        ? el('video', { src: `api/teacher/videos/${encodeURIComponent(id)}/${clip.file}`, controls: '', preload: 'metadata', playsinline: '' })
+        : el('p', { class: 'small' }, 'No video for this letter.'),
+      el('div', { class: 'row' },
+        el('button', { class: 'plain-btn ok-btn', type: 'button', onclick: () => decide(true) }, `✓ ${r.step === 'name' ? 'Name' : 'Sound'} was correct`),
+        el('button', { class: 'plain-btn no-btn', type: 'button', onclick: () => decide(false) }, '✗ Not correct')));
   }));
 
   $('videos').replaceChildren(...(s.videos.length ? s.videos.map((v) => {
@@ -81,14 +102,19 @@ async function loadStudent(id) {
     return card;
   }) : [el('p', { class: 'small' }, 'No videos yet.')]));
 
-  const mark = (ok) => el('span', { class: ok ? 'yes' : 'no-text' }, ok ? '✓' : '✗');
+  const by = (a, step) => a[`${step}By`] || (a.checkedBy === 'adult' ? 'teacher' : 'app');
+  const mark = (a, step) => {
+    if (by(a, step) === 'review') return el('span', { class: 'listen-text' }, '🎧 Listen');
+    const ok = a[`${step}Correct`];
+    return el('span', { class: ok ? 'yes' : 'no-text' }, (ok ? '✓' : '✗') + (by(a, step) === 'teacher' ? ' (teacher)' : ''));
+  };
   $('attempts').replaceChildren(...s.attempts.map((a) => el('tr', {},
     el('td', {}, a.testDate || ''),
     el('td', {}, when(a.at)),
     el('td', {}, a.letter + (a.retry ? ' (after practice)' : '')),
-    el('td', {}, mark(a.nameCorrect)),
-    el('td', {}, mark(a.soundCorrect)),
-    el('td', {}, a.checkedBy === 'adult' ? 'checked by an adult' : (a.heard ?? [a.heardName, a.heardSound].filter(Boolean).join(' / ')) || '(nothing)'))));
+    el('td', {}, mark(a, 'name')),
+    el('td', {}, mark(a, 'sound')),
+    el('td', {}, (a.heard ?? [a.heardName, a.heardSound].filter(Boolean).join(' / ')) || '(nothing)'))));
 }
 
 $('login-form').addEventListener('submit', async (e) => {

@@ -98,7 +98,7 @@ export function flyStar(from, to) {
       { transform: 'translate(-50%, -50%) scale(2.4) rotate(20deg)', opacity: 1, offset: 0.3 },
       { transform: 'translate(-50%, -50%) scale(2.2) rotate(-10deg)', opacity: 1, offset: 0.55 },
       { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(0.6) rotate(360deg)`, opacity: 1 },
-    ], { duration: 1500, easing: 'cubic-bezier(.5,0,.3,1)' }).finished.then(() => {
+    ], { duration: 900, easing: 'cubic-bezier(.5,0,.3,1)' }).finished.then(() => {
       star.remove();
       to.classList.remove('bump');
       void to.offsetWidth;

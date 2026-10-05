@@ -88,10 +88,14 @@
         <span class="step" id="step-sound">Sound</span>
       </div>
       <button id="say-btn" class="say-btn" type="button">🎤 Say it</button>
-      <div id="adult-check" class="adult-check" hidden>
-        <p class="small" id="adult-question"></p>
-        <button type="button" class="big-btn ok" id="adult-yes">✓ Yes</button>
-        <button type="button" class="big-btn no" id="adult-no">✗ Not yet</button>
+      <div id="teacher-check" class="teacher-check" hidden>
+        <p class="small" id="teacher-reason"></p>
+        <p class="teacher-q" id="teacher-question"></p>
+        <div class="row">
+          <button type="button" class="big-btn ok" id="teacher-yes">✓ Correct</button>
+          <button type="button" class="big-btn no" id="teacher-no">✗ Not correct</button>
+        </div>
+        <button type="button" class="big-btn" id="teacher-later">Continue ➜ <span class="small-label">(teacher will listen later)</span></button>
       </div>
     </section>
 
