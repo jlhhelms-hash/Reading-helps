@@ -4,6 +4,7 @@
 import { ALPHABET, LETTERS, heardLetterName, heardLetterSound, shuffle } from './letters.js';
 import { ACTIVITIES, speak } from './activities.js';
 import { openCamera, recordClip, stopCamera, uploadClip } from './recorder.js';
+import { isPlaying, musicWanted, setMusicWanted, startMusic, stopMusic } from './music.js';
 import { chime, confetti, flyStar, letterColor, popTwinkle, renderStarChart } from './fun.js';
 
 const TRIES = 3; // the first try plus up to 2 retries
@@ -24,7 +25,48 @@ function show(screen) {
   document.querySelectorAll('.screen').forEach((s) => { s.hidden = s.id !== `screen-${screen}`; });
   // The colorful letters background is for the start and welcome screens; the
   // test screens stay calm so the letter stands out.
-  document.body.classList.toggle('letters-bg', screen === 'start' || screen === 'welcome');
+  const intro = screen === 'start' || screen === 'welcome';
+  document.body.classList.toggle('letters-bg', intro);
+  // Intro music plays only on the start and welcome screens.
+  $('music-btn').hidden = !intro;
+  if (!intro) stopMusic();
+  showMusicButton();
+}
+
+function showMusicButton() {
+  const on = isPlaying();
+  $('music-btn').textContent = on ? '🎵' : '🔇';
+  $('music-btn').setAttribute('aria-label', on ? 'Turn music off' : 'Turn music on');
+  $('music-btn').classList.toggle('off', !on);
+}
+
+$('music-btn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (isPlaying()) {
+    stopMusic();
+    setMusicWanted(false);
+  } else {
+    startMusic();
+    setMusicWanted(true);
+  }
+  showMusicButton();
+});
+
+// Browsers only allow sound after the first tap or key press, so the music
+// starts then (unless it was turned off).
+function startMusicOnFirstTouch() {
+  const begin = (e) => {
+    // A first tap on the music button is handled by the button itself.
+    if (e.target.closest?.('#music-btn')) return;
+    window.removeEventListener('pointerdown', begin, true);
+    window.removeEventListener('keydown', begin, true);
+    if (musicWanted() && !$('music-btn').hidden) {
+      startMusic();
+      showMusicButton();
+    }
+  };
+  window.addEventListener('pointerdown', begin, true);
+  window.addEventListener('keydown', begin, true);
 }
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -460,11 +502,16 @@ function today() {
 $('test-date').value = today();
 
 $('switch-btn').addEventListener('click', () => {
+  if (musicWanted()) startMusic();
   $('first-name').value = '';
   $('last-name').value = '';
   $('grade').value = '';
   state.student = null;
   show('start');
+showMusicButton();
+startMusicOnFirstTouch();
 });
 
 show('start');
+showMusicButton();
+startMusicOnFirstTouch();

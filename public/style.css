@@ -375,6 +375,23 @@ body.letters-bg {
 .letters-bg .card, .letters-bg .bubble { box-shadow: 0 12px 34px rgba(31, 42, 68, 0.22); }
 .teacher-link a { background: var(--surface); padding: 6px 16px; border-radius: 999px; box-shadow: var(--shadow-soft); }
 
+.music-btn {
+  position: fixed;
+  top: 18px;
+  right: 16px;
+  z-index: 10;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 3px solid var(--line);
+  background: var(--surface);
+  font-size: 1.6rem;
+  box-shadow: var(--shadow-soft);
+  animation: bob 1.2s ease-in-out infinite;
+}
+.music-btn.off { animation: none; opacity: 0.8; }
+.music-btn[hidden] { display: none; }
+
 /* Celebrations */
 .confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 20; }
 .confetti i {

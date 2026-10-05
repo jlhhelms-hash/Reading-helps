@@ -2,7 +2,7 @@
 
 A web app that checks whether elementary students know each letter's **name** and **sound**.
 
-1. The first screen asks for the student's **first name, last name, grade and date of test** (the date starts as today). Ollie the Owl then welcomes them and shows their **star chart**.
+1. The first screen asks for the student's **first name, last name, grade and date of test** (the date starts as today). Ollie the Owl then welcomes them and shows their **star chart**. A bouncy intro tune plays on these screens. It starts at the first tap, because browsers don't allow sound before that. The 🎵 button turns it off (the app remembers), and it fades out when the test begins.
 2. The app shows a letter (big and small, like **Bb**), each letter in its own bright color.
 3. **"What is the name of this letter?"** The student taps **🎤 Say it** (it pops and twinkles) and says the letter's name. The app listens for up to 5 seconds. If it hears the right name, a ⭐ flies to their star count (no spoken praise, so it moves right along).
 4. **"What is the sound of this letter?"** Same again for the sound, for another ⭐.
@@ -74,6 +74,7 @@ npm test        # letter-matching and server tests
 | `public/app.js` | Student flow: test, record, practice, retry |
 | `public/activities.js` | The five practice activities |
 | `public/recorder.js` | Camera recording and video upload |
+| `public/music.js` | The intro tune, made with the Web Audio API (no music file) |
 | `public/fun.js` | Letter colors, confetti, the star chime, flying stars and the star chart |
 | `xlsx.js` | Small Excel file writer used by the teacher export |
 | `public/teacher.html`, `public/teacher.js` | Teacher page |
