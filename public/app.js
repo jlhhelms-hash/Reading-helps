@@ -207,12 +207,18 @@ async function teacherCheck(letter, test, reason) {
 // TESTS[test].tries tries. Returns { correct, heard, by } where `by` is 'app',
 // 'teacher', 'review' (teacher listening required), or 'video' (the sound wasn't
 // heard right: record it on the webcam for the teacher).
-async function askLetter(letter, test) {
+async function askLetter(letter, test, firstLetter) {
   const { question, hint, check, tries: TRIES } = TESTS[test];
   $('test-pill').className = 'step active';
-  $('prompt').textContent = question;
-  setFeedback(hint);
-  await speak(question);
+  if (firstLetter) {
+    // The question is asked once, on the first letter of the test.
+    $('prompt').textContent = question;
+    setFeedback(hint);
+    await speak(question);
+  } else {
+    $('prompt').textContent = 'Tap “Say it”.';
+    setFeedback('');
+  }
 
   const heardLog = [];
   let heardWords = false;
@@ -311,7 +317,7 @@ async function earnStar(letter, test) {
 
 // Test one letter. Returns 'passed', 'video' (the sound went to the teacher on
 // video), 'review' (teacher will listen later) or 'missed' (needs practice).
-async function testLetter(letter, test, retry) {
+async function testLetter(letter, test, retry, firstLetter = false) {
   show('letter');
   $('letter-upper').textContent = letter;
   $('letter-lower').textContent = letter.toLowerCase();
@@ -323,7 +329,7 @@ async function testLetter(letter, test, retry) {
   void card.offsetWidth;
   card.style.animation = '';
 
-  const answer = await askLetter(letter, test);
+  const answer = await askLetter(letter, test, firstLetter);
   let outcome;
   if (answer.correct) {
     await earnStar(letter, test);
@@ -450,7 +456,7 @@ async function run(test) {
   showStarCount();
   for (const [i, letter] of letters.entries()) {
     $('progress-fill').style.width = `${(i / letters.length) * 100}%`;
-    const outcome = await testLetter(letter, test, false);
+    const outcome = await testLetter(letter, test, false, i === 0);
     if (outcome === 'passed') state.passed++;
     // A missed letter name gets a video, practice, and one more try.
     if (outcome !== 'missed') continue;

@@ -4,7 +4,7 @@ A web app that checks whether elementary students know each letter's **name** an
 
 1. The first screen asks for the student's **first name, last name, grade and date of test** (the date starts as today). Ollie the Owl then welcomes them and shows their **star chart**. A bouncy intro tune plays on these screens. It starts at the first tap, because browsers don't allow sound before that. The 🎵 button turns it off (the app remembers), and it fades out when a test begins.
 2. The student picks a test: **🔤 Name test** or **🔊 Sound test**. Ollie suggests doing the Name test first, and when it ends the main button is **Next: Sound test**.
-3. Each test shows random letters one at a time (5, 10 or all 26), each big and small (like **Bb**) in its own bright color. The student taps **🎤 Say it** (it pops and twinkles) and answers. The app listens for up to 5 seconds. A right answer sends a ⭐ flying to their star count, and the next letter comes right away.
+3. Each test shows random letters one at a time (5, 10 or all 26), each big and small (like **Bb**) in its own bright color. The question ("What is the name of this letter?" or "What is the sound of this letter?") is asked only on the first letter; after that the next letter just appears. The student taps **🎤 Say it** (it pops and twinkles) and answers. The app listens for up to 5 seconds. A right answer sends a ⭐ flying to their star count, and the next letter comes right away.
 
 **Name test** ("What is the name of this letter?")
 - A first try plus up to 2 retries.
@@ -22,7 +22,7 @@ A web app that checks whether elementary students know each letter's **name** an
 
 At the end of each test, students see how many letters they knew and how many stars they earned.
 
-**Stars:** every right answer earns a star, so the total keeps growing. The star chart shows two stars for each letter: the first for its name and the second for its sound. A letter's stars stay on the chart once earned.
+**Stars:** every right answer earns a star, so the total keeps growing. The star chart shows two stars for each letter, one for its name and one for its sound (the chart doesn't say which is which). A letter's stars stay on the chart once earned.
 
 The **teacher page** (`/teacher`, protected by a PIN) lists students by last name. Each student's page shows:
 - their grade, last test date and star total

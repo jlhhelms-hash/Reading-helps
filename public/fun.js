@@ -109,7 +109,8 @@ export function flyStar(from, to) {
 }
 
 // A–Z chart. `chart` is { B: { name: true, sound: false }, ... }: each letter shows
-// two stars, the first for its name and the second for its sound. `fresh` letters sparkle.
+// two stars, the first for its name and the second for its sound (the chart doesn't
+// say which is which). `fresh` letters sparkle.
 export function renderStarChart(box, chart, fresh = []) {
   box.replaceChildren(...ALPHABET.map((letter) => {
     const { name = false, sound = false } = chart[letter] || {};
@@ -128,7 +129,8 @@ export function renderStarChart(box, chart, fresh = []) {
     label.textContent = letter + letter.toLowerCase();
     cell.append(stars, label);
     if (name || sound) cell.style.setProperty('--letter-color', letterColor(letter));
-    cell.title = `${letter}: name ${name ? '⭐' : 'not yet'}, sound ${sound ? '⭐' : 'not yet'}`;
+    const count = Number(name) + Number(sound);
+    cell.title = `${letter}: ${count} ${count === 1 ? 'star' : 'stars'}`;
     return cell;
   }));
 }
