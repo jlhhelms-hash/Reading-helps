@@ -2,11 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { LETTERS, ALPHABET, heardLetterName, heardLetterSound, normalize } from '../public/letters.js';
 
-test('every letter has names, sounds and three picture words', () => {
+test('every letter has names, a way to match its sound, and three picture words', () => {
   assert.equal(ALPHABET.length, 26);
   for (const letter of ALPHABET) {
     const l = LETTERS[letter];
-    assert.ok(l.names.length && l.sounds.length, letter);
+    assert.ok(l.names.length && (l.sounds.length || l.soundStarts.length), letter);
     assert.equal(l.words.length, 3, letter);
   }
 });
@@ -33,37 +33,45 @@ test('wrong letter names are rejected', () => {
   assert.ok(!heardLetterName('A', ['banana']), 'does not match inside words');
 });
 
-test('letter sounds are recognized', () => {
-  assert.ok(heardLetterSound('B', ['buh']));
-  assert.ok(heardLetterSound('B', ['bih']), 'short word starting with the letter');
+test('clipped consonant sounds are recognized', () => {
   assert.ok(heardLetterSound('S', ['sssssss']));
   assert.ok(heardLetterSound('M', ['mmmm']));
-  assert.ok(heardLetterSound('C', ['kuh']));
+  assert.ok(heardLetterSound('M', ['hmm']));
+  assert.ok(heardLetterSound('F', ['fff']));
+  assert.ok(heardLetterSound('C', ['ck']));
   assert.ok(heardLetterSound('K', ['ck']));
-  assert.ok(heardLetterSound('K', ['coo']));
-  assert.ok(heardLetterSound('K', ['kih']), 'short word starting with k');
-  assert.ok(heardLetterSound('A', ['ah']));
-  assert.ok(heardLetterSound('B', ['bee buh']), 'name then sound in one go');
+  assert.ok(heardLetterSound('X', ['ks']));
+  assert.ok(heardLetterSound('Z', ['zzz']));
+  assert.ok(heardLetterSound('B', ['bb']), 'a repeated clipped b');
 });
 
-test('name and sound said together in one go', () => {
-  for (const [letter, said] of [['B', 'bee buh'], ['S', 'es sss'], ['M', 'em mmm'], ['A', 'a ah'], ['T', 'T tuh']]) {
-    assert.ok(heardLetterName(letter, [said]), `${letter} name in "${said}"`);
-    assert.ok(heardLetterSound(letter, [said]), `${letter} sound in "${said}"`);
+test('consonant sounds with an added vowel ("puh") are not accepted', () => {
+  for (const [letter, said] of [['P', 'puh'], ['B', 'buh'], ['T', 'tuh'], ['D', 'dah'], ['C', 'kuh'], ['K', 'kuh'],
+    ['G', 'guh'], ['S', 'suh'], ['M', 'muh'], ['B', 'bih'], ['P', 'pop'], ['B', 'but'], ['Q', 'quick']]) {
+    assert.ok(!heardLetterSound(letter, [said]), `${letter}: "${said}"`);
   }
-  assert.ok(!heardLetterSound('B', ['bee bee']), 'name twice is not the sound');
 });
 
-test('saying the name is not the sound', () => {
+test('short vowel sounds are recognized', () => {
+  assert.ok(heardLetterSound('A', ['ah']));
+  assert.ok(heardLetterSound('E', ['eh']));
+  assert.ok(heardLetterSound('I', ['ih']));
+  assert.ok(heardLetterSound('O', ['aw']));
+  assert.ok(heardLetterSound('U', ['uh']));
+});
+
+test('saying the name or the key word is not the sound', () => {
   assert.ok(!heardLetterSound('B', ['bee']));
   assert.ok(!heardLetterSound('B', ['b']));
   assert.ok(!heardLetterSound('T', ['tea']));
   assert.ok(!heardLetterSound('E', ['e']));
+  assert.ok(!heardLetterSound('A', ['ax']));
+  assert.ok(!heardLetterSound('U', ['up']));
 });
 
 test('wrong sounds are rejected', () => {
-  assert.ok(!heardLetterSound('B', ['duh']));
+  assert.ok(!heardLetterSound('B', ['dd']));
   assert.ok(!heardLetterSound('M', ['nnn']));
-  assert.ok(!heardLetterSound('F', ['vuh']));
-  assert.ok(!heardLetterSound('B', ['banana']), 'long words do not count');
+  assert.ok(!heardLetterSound('F', ['vvv']));
+  assert.ok(!heardLetterSound('B', ['banana']));
 });
