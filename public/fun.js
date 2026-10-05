@@ -51,6 +51,31 @@ export function chime() {
   }
 }
 
+// A bubbly "pop" and a quick twinkle, played when the student taps Say it.
+export function popTwinkle() {
+  try {
+    audio ||= new (window.AudioContext || window.webkitAudioContext)();
+    const start = audio.currentTime;
+    const note = (type, from, to, at, length, volume) => {
+      const osc = audio.createOscillator();
+      const gain = audio.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(from, at);
+      osc.frequency.exponentialRampToValueAtTime(to, at + length * 0.6);
+      gain.gain.setValueAtTime(0.0001, at);
+      gain.gain.exponentialRampToValueAtTime(volume, at + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + length);
+      osc.connect(gain).connect(audio.destination);
+      osc.start(at);
+      osc.stop(at + length + 0.02);
+    };
+    note('sine', 380, 1100, start, 0.09, 0.35); // pop
+    [1760, 2349, 2794, 3520].forEach((freq, i) => note('triangle', freq, freq, start + 0.07 + i * 0.045, 0.16, 0.08)); // twinkle
+  } catch {
+    // No sound is fine.
+  }
+}
+
 // A big star pops up over `from`, then flies into `to` (the star counter).
 export function flyStar(from, to) {
   return new Promise((resolve) => {

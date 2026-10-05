@@ -4,7 +4,7 @@
 import { ALPHABET, LETTERS, heardLetterName, heardLetterSound, shuffle } from './letters.js';
 import { ACTIVITIES, speak } from './activities.js';
 import { openCamera, recordClip, stopCamera, uploadClip } from './recorder.js';
-import { chime, confetti, flyStar, letterColor, renderStarChart } from './fun.js';
+import { chime, confetti, flyStar, letterColor, popTwinkle, renderStarChart } from './fun.js';
 
 const TRIES = 2;
 const RECORD_SECONDS = 5;
@@ -28,9 +28,53 @@ function nextClick(button) {
   return new Promise((resolve) => button.addEventListener('click', resolve, { once: true }));
 }
 
+// Watches the microphone volume while listening. Speech recognition is made for
+// words, so a short sound like /k/ often comes back as nothing; the volume tells
+// us whether the student said something we couldn't read, or stayed quiet.
+let meter = null;
+async function startMeter() {
+  try {
+    if (!meter) {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 1024;
+      ctx.createMediaStreamSource(stream).connect(analyser);
+      meter = { ctx, analyser, data: new Float32Array(analyser.fftSize) };
+    }
+    await meter.ctx.resume();
+    let loudMs = 0;
+    const timer = setInterval(() => {
+      meter.analyser.getFloatTimeDomainData(meter.data);
+      let sum = 0;
+      for (const v of meter.data) sum += v * v;
+      if (Math.sqrt(sum / meter.data.length) > 0.03) loudMs += 20;
+    }, 20);
+    // Call the returned function to stop; it says whether a voice was heard.
+    return () => {
+      clearInterval(timer);
+      return loudMs >= 80;
+    };
+  } catch {
+    return () => false;
+  }
+}
+
 // Listen until the student stops talking (or 7 seconds pass). Resolves with
-// the recognizer's guesses: the whole thing first, then each piece's alternatives.
-function listen() {
+// { heard, voice }: the recognizer's guesses (the whole thing first, then each
+// piece's alternatives) and whether the microphone picked up a voice at all.
+async function listen() {
+  const stopMeter = await startMeter();
+  try {
+    const heard = await recognize();
+    return { heard, voice: stopMeter() };
+  } catch (err) {
+    stopMeter();
+    throw err;
+  }
+}
+
+function recognize() {
   return new Promise((resolve, reject) => {
     const rec = new Recognition();
     rec.lang = 'en-US';
@@ -107,19 +151,24 @@ async function askStep(letter, step) {
   const { question, check } = STEPS[step];
   $(`step-${step}`).classList.add('active');
   $('prompt').textContent = question;
-  setFeedback('Tap “Say it”, then answer.');
+  setFeedback(step === 'sound' ? 'Tap “Say it”, then make the sound nice and loud.' : 'Tap “Say it”, then answer.');
   await speak(question);
 
   const heardLog = [];
+  let silences = 0;
   for (let tries = 0; tries < TRIES;) {
     if (state.adultMode) return adultCheck(letter, step);
     await nextClick($('say-btn'));
     window.speechSynthesis?.cancel();
+    popTwinkle();
     $('say-btn').classList.add('listening');
     $('say-btn').textContent = '👂 Listening…';
+    // Let the pop finish so the microphone doesn't hear it.
+    await wait(350);
     let heard;
+    let voice;
     try {
-      heard = await listen();
+      ({ heard, voice } = await listen());
     } catch (err) {
       // No microphone permission or no speech service: let a grown-up check instead.
       console.warn('Speech recognition error:', err);
@@ -131,7 +180,20 @@ async function askStep(letter, step) {
       $('say-btn').textContent = '🎤 Say it';
     }
     if (!heard.length) {
-      setFeedback("I didn't hear you. Tap “Say it” and try again!");
+      // A voice with no words usually means a short sound the recognizer
+      // couldn't read. That uses up a try. Silence doesn't, unless it keeps happening.
+      if (voice || ++silences >= 3) {
+        heardLog.push(voice ? '(voice heard, no words)' : '(nothing heard)');
+        silences = 0;
+        tries++;
+        if (tries < TRIES) {
+          setFeedback(voice
+            ? "I heard you, but I couldn't tell what you said. Say it loud and clear!"
+            : "I still can't hear you. Let's try once more!", 'oops');
+        }
+      } else {
+        setFeedback("I didn't hear you. Tap “Say it” and talk nice and loud!");
+      }
       continue;
     }
     heardLog.push(heard[0]);

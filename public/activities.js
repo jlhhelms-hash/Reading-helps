@@ -3,7 +3,7 @@
 
 import { LETTERS, ALPHABET, shuffle } from './letters.js';
 import { openCamera, recordClip, stopCamera, uploadClip } from './recorder.js';
-import { confetti, letterColor } from './fun.js';
+import { confetti, letterColor, popTwinkle } from './fun.js';
 
 const SAY_IT_SECONDS = 4;
 
@@ -17,12 +17,35 @@ const LOOKALIKES = {
 // Letters whose sounds match, so they never appear as a "wrong" picture.
 const SOUNDALIKES = { C: 'KQ', K: 'CQ', Q: 'CK', Y: 'U', U: 'Y' };
 
+// Pick the most natural, child-like voice the device has. Edge on Windows has
+// "Microsoft Ana", a child's voice; otherwise prefer the newer "Natural" voices.
+const VOICE_PREFERENCES = [/\bAna\b/i, /Natural/i, /Google US English/i, /Samantha|Aria|Jenny|Ava\b/i, /Zira/i];
+let chosenVoice;
+
+function pickVoice() {
+  const voices = speechSynthesis.getVoices().filter((v) => v.lang?.startsWith('en'));
+  for (const pattern of VOICE_PREFERENCES) {
+    const match = voices.find((v) => pattern.test(v.name) && v.lang === 'en-US') || voices.find((v) => pattern.test(v.name));
+    if (match) return match;
+  }
+  return voices.find((v) => v.lang === 'en-US') || voices[0];
+}
+
+if ('speechSynthesis' in window) {
+  speechSynthesis.addEventListener?.('voiceschanged', () => { chosenVoice = pickVoice(); });
+}
+
 export function speak(text) {
   if (!('speechSynthesis' in window)) return Promise.resolve();
   return new Promise((resolve) => {
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    u.rate = 0.85;
+    chosenVoice ||= pickVoice();
+    if (chosenVoice) u.voice = chosenVoice;
+    // A child's voice is already high; raise the pitch of the others to sound younger and friendlier.
+    const isChildVoice = /\bAna\b/i.test(chosenVoice?.name || '');
+    u.pitch = isChildVoice ? 1.1 : 1.45;
+    u.rate = 0.95;
     u.onend = resolve;
     u.onerror = resolve;
     // Some browsers never fire onend, so don't wait forever.
@@ -98,6 +121,7 @@ function sayIt(box, letter, { student }) {
     }
 
     sayBtn.addEventListener('click', async () => {
+      popTwinkle();
       sayBtn.disabled = true;
       nextBtn.hidden = true;
       status.textContent = '';

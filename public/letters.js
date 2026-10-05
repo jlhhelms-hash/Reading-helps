@@ -10,7 +10,7 @@
 export const LETTERS = {
   A: { names: ['a', 'ay', 'hey', 'hay'], sounds: ['ah', 'aah', 'at', 'add', 'an', 'and', 'ask', 'apple'], soundStarts: [], words: [['apple', '🍎'], ['ant', '🐜'], ['alligator', '🐊']] },
   B: { names: ['b', 'bee', 'be', 'bea'], sounds: ['buh', 'bah', 'ba', 'bu', 'but', 'bud', 'bug'], soundStarts: ['b'], words: [['ball', '⚽'], ['bear', '🐻'], ['banana', '🍌']] },
-  C: { names: ['c', 'see', 'sea', 'si', 'cee'], sounds: ['kuh', 'cuh', 'ka', 'ca', 'cut', 'cup', 'kah'], soundStarts: ['c', 'k'], words: [['cat', '🐱'], ['car', '🚗'], ['cake', '🎂']] },
+  C: { names: ['c', 'see', 'sea', 'si', 'cee'], sounds: ['kuh', 'cuh', 'ka', 'ca', 'cut', 'cup', 'kah', 'ck', 'ku', 'cu', 'coo', 'cook', 'kick', 'cuz'], soundStarts: ['c', 'k'], words: [['cat', '🐱'], ['car', '🚗'], ['cake', '🎂']] },
   D: { names: ['d', 'dee', 'de'], sounds: ['duh', 'da', 'dah', 'du', 'dud', 'done'], soundStarts: ['d'], words: [['dog', '🐶'], ['duck', '🦆'], ['door', '🚪']] },
   E: { names: ['e', 'ee', 'eee'], sounds: ['eh', 'ehh', 'ed', 'egg', 'edd', 'end'], soundStarts: [], words: [['egg', '🥚'], ['elephant', '🐘'], ['elf', '🧝']] },
   F: { names: ['f', 'ef', 'eff'], sounds: ['ff', 'fuh', 'fa', 'fu', 'fun', 'fah'], soundStarts: ['f', 'ph'], words: [['fish', '🐟'], ['fox', '🦊'], ['frog', '🐸']] },
@@ -18,7 +18,7 @@ export const LETTERS = {
   H: { names: ['h', 'aitch', 'haitch', 'ach', 'age', 'each'], sounds: ['huh', 'ha', 'hah', 'hu', 'hut', 'hum'], soundStarts: ['h'], words: [['hat', '🎩'], ['horse', '🐴'], ['house', '🏠']] },
   I: { names: ['i', 'eye', 'aye', 'ai'], sounds: ['ih', 'it', 'in', 'is', 'if', 'ick', 'itch'], soundStarts: [], words: [['igloo', '🛖'], ['insect', '🐛'], ['ink', '🖋️']] },
   J: { names: ['j', 'jay', 'jae'], sounds: ['juh', 'ja', 'jah', 'ju', 'jug', 'just'], soundStarts: ['j'], words: [['jam', '🍓'], ['jet', '✈️'], ['juice', '🧃']] },
-  K: { names: ['k', 'kay', 'okay', 'ok', 'cay'], sounds: ['kuh', 'ka', 'kah', 'cuh', 'ca', 'cut', 'cup'], soundStarts: ['k', 'c'], words: [['kite', '🪁'], ['key', '🔑'], ['king', '🤴']] },
+  K: { names: ['k', 'kay', 'okay', 'ok', 'cay'], sounds: ['kuh', 'ka', 'kah', 'cuh', 'ca', 'cut', 'cup', 'ck', 'ku', 'cu', 'coo', 'cook', 'kick', 'cuz'], soundStarts: ['k', 'c'], words: [['kite', '🪁'], ['key', '🔑'], ['king', '🤴']] },
   L: { names: ['l', 'el', 'ell', 'elle'], sounds: ['ll', 'la', 'luh', 'lah', 'lu', 'luv'], soundStarts: ['l'], words: [['lion', '🦁'], ['leaf', '🍃'], ['lemon', '🍋']] },
   M: { names: ['m', 'em'], sounds: ['mm', 'muh', 'ma', 'mah', 'mom', 'mum', 'mud', 'hmm'], soundStarts: ['m'], words: [['moon', '🌙'], ['monkey', '🐒'], ['milk', '🥛']] },
   N: { names: ['n', 'en'], sounds: ['nn', 'nuh', 'na', 'nah', 'nut', 'nun'], soundStarts: ['n'], words: [['nest', '🪺'], ['nose', '👃'], ['nut', '🥜']] },

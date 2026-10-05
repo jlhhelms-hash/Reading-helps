@@ -39,6 +39,9 @@ test('letter sounds are recognized', () => {
   assert.ok(heardLetterSound('S', ['sssssss']));
   assert.ok(heardLetterSound('M', ['mmmm']));
   assert.ok(heardLetterSound('C', ['kuh']));
+  assert.ok(heardLetterSound('K', ['ck']));
+  assert.ok(heardLetterSound('K', ['coo']));
+  assert.ok(heardLetterSound('K', ['kih']), 'short word starting with k');
   assert.ok(heardLetterSound('A', ['ah']));
   assert.ok(heardLetterSound('B', ['bee buh']), 'name then sound in one go');
 });
