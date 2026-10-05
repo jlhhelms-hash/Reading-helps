@@ -30,6 +30,7 @@ function show(screen) {
   document.body.classList.toggle('letters-bg', intro);
   // Intro music plays only on the start and welcome screens.
   $('music-btn').hidden = !intro;
+  $('test-controls').hidden = !['letter', 'record', 'practice'].includes(screen);
   if (!intro) stopMusic();
   showMusicButton();
 }
@@ -70,11 +71,39 @@ function startMusicOnFirstTouch() {
   window.addEventListener('keydown', begin, true);
 }
 
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+// "Save & finish" and "Exit" can stop a test at any moment. The test waits on
+// taps, speech and timers; while a test runs those waits also end if the test
+// is stopped, throwing a StopTest that run() handles.
+class StopTest extends Error {
+  constructor(action) {
+    super(`Test stopped: ${action}`);
+    this.action = action; // 'save' or 'exit'
+  }
+}
+const NEVER = new Promise(() => {});
+let stopped = NEVER;
+let stopTest = null;
+
+function armStop() {
+  stopped = new Promise((_, reject) => { stopTest = (action) => reject(new StopTest(action)); });
+  stopped.catch(() => {});
+}
+
+function disarmStop() {
+  stopped = NEVER;
+  stopTest = null;
+}
+
+const untilStopped = (promise) => Promise.race([promise, stopped]);
+
+const wait = (ms) => untilStopped(new Promise((r) => setTimeout(r, ms)));
 
 function nextClick(button) {
-  return new Promise((resolve) => button.addEventListener('click', resolve, { once: true }));
+  return untilStopped(new Promise((resolve) => button.addEventListener('click', resolve, { once: true })));
 }
+
+// Speak and wait for it to finish (or for the test to stop).
+const say = (text) => untilStopped(speak(text));
 
 // Watches the microphone volume while listening. Speech recognition is made for
 // words, so a short sound like /k/ often comes back as nothing; the volume tells
@@ -214,7 +243,7 @@ async function askLetter(letter, test, firstLetter) {
     // The question is asked once, on the first letter of the test.
     $('prompt').textContent = question;
     setFeedback(hint);
-    await speak(question);
+    await say(question);
   } else {
     $('prompt').textContent = 'Tap “Say it”.';
     setFeedback('');
@@ -233,8 +262,9 @@ async function askLetter(letter, test, firstLetter) {
     let heard;
     let voice;
     try {
-      ({ heard, voice } = await listen());
+      ({ heard, voice } = await untilStopped(listen()));
     } catch (err) {
+      if (err instanceof StopTest) throw err;
       // No microphone permission or no speech service: the teacher checks instead.
       console.warn('Speech recognition error:', err);
       state.adultMode = true;
@@ -277,7 +307,7 @@ async function saveAttempt(record) {
     const res = await fetch('api/attempts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...state.student, ...record }),
+      body: JSON.stringify({ ...state.student, session: state.session, ...record }),
     });
     return res.ok ? await res.json() : null;
   } catch (err) {
@@ -351,7 +381,7 @@ async function testLetter(letter, test, retry, firstLetter = false) {
     $('test-pill').className = 'step missed';
     $('prompt').textContent = TESTS.name.wrong(letter);
     setFeedback("That's OK! We'll practice it.", 'oops');
-    await speak(`${TESTS.name.wrong(letter)} Let's practice it together!`);
+    await say(`${TESTS.name.wrong(letter)} Let's practice it together!`);
     outcome = 'missed';
   }
 
@@ -410,19 +440,22 @@ async function recordVideo(letter, kind = 'missed') {
     await wait(2500);
     return;
   }
-  $('camera').srcObject = stream;
-  button.disabled = false;
-  speak(text.say(letter));
-  await nextClick(button);
-  button.disabled = true;
-
-  const clip = await recordClip(stream, RECORD_SECONDS, (tick) => { $('countdown').textContent = tick; });
-  stopCamera(stream);
-  $('camera').srcObject = null;
+  let clip;
+  try {
+    $('camera').srcObject = stream;
+    button.disabled = false;
+    speak(text.say(letter));
+    await nextClick(button);
+    button.disabled = true;
+    clip = await recordClip(stream, RECORD_SECONDS, (tick) => { $('countdown').textContent = tick; });
+  } finally {
+    stopCamera(stream);
+    $('camera').srcObject = null;
+  }
 
   $('record-status').textContent = 'Saving…';
   try {
-    await uploadClip(state.student, letter, kind, clip);
+    await uploadClip({ ...state.student, session: state.session }, letter, kind, clip);
     $('record-status').textContent = text.saved;
     confetti(30);
   } catch (err) {
@@ -436,9 +469,39 @@ async function recordVideo(letter, kind = 'missed') {
 async function practice(letter) {
   show('practice');
   $('practice-letter').textContent = letter + letter.toLowerCase();
-  for (const [i, activity] of ACTIVITIES.entries()) {
-    $('practice-step').textContent = `${i + 1} of ${ACTIVITIES.length}`;
-    await activity($('activity'), letter, { student: state.student });
+  // Activities register clean-up (like turning off the camera) for when the test stops.
+  const cleanups = [];
+  const ctx = { student: { ...state.student, session: state.session }, onStop: (fn) => cleanups.push(fn) };
+  try {
+    for (const [i, activity] of ACTIVITIES.entries()) {
+      $('practice-step').textContent = `${i + 1} of ${ACTIVITIES.length}`;
+      await untilStopped(activity($('activity'), letter, ctx));
+    }
+  } finally {
+    cleanups.forEach((fn) => fn());
+  }
+}
+
+// Put the letter screen back the way a new test expects it.
+function resetTestScreen() {
+  $('teacher-check').hidden = true;
+  $('say-btn').hidden = false;
+  $('say-btn').classList.remove('listening');
+  $('say-btn').textContent = '🎤 Say it';
+  setFeedback('');
+}
+
+function newSessionId() {
+  return [...crypto.getRandomValues(new Uint8Array(12))].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Exit without saving: remove this test's answers and videos.
+async function discardSession() {
+  try {
+    const { first, last } = state.student;
+    await fetch(`api/sessions/${state.session}?${new URLSearchParams({ first, last })}`, { method: 'DELETE' });
+  } catch (err) {
+    console.warn('Could not remove this test', err);
   }
 }
 
@@ -446,35 +509,63 @@ async function practice(letter) {
 async function run(test) {
   const count = Number($('letter-count').value);
   state.test = test;
+  state.session = newSessionId();
   state.practiced = [];
   state.passed = 0;
   state.starsToday = 0;
   state.newChart = [];
   const letters = shuffle(ALPHABET).slice(0, count);
+  let answered = 0;
   $('who').textContent = `👋 ${state.student.first}`;
   $('test-pill').textContent = TESTS[test].pill;
+  resetTestScreen();
   showStarCount();
-  for (const [i, letter] of letters.entries()) {
-    $('progress-fill').style.width = `${(i / letters.length) * 100}%`;
-    const outcome = await testLetter(letter, test, false, i === 0);
-    if (outcome === 'passed') state.passed++;
-    // A missed letter name gets a video, practice, and one more try.
-    if (outcome !== 'missed') continue;
-    state.practiced.push(letter);
-    await recordVideo(letter, 'missed');
-    await practice(letter);
-    if ((await testLetter(letter, test, true)) === 'passed') state.passed++;
+  armStop();
+  try {
+    for (const [i, letter] of letters.entries()) {
+      $('progress-fill').style.width = `${(i / letters.length) * 100}%`;
+      const outcome = await testLetter(letter, test, false, i === 0);
+      answered++;
+      if (outcome === 'passed') state.passed++;
+      // A missed letter name gets a video, practice, and one more try.
+      if (outcome !== 'missed') continue;
+      state.practiced.push(letter);
+      await recordVideo(letter, 'missed');
+      await practice(letter);
+      if ((await testLetter(letter, test, true)) === 'passed') state.passed++;
+    }
+    $('progress-fill').style.width = '100%';
+    disarmStop();
+    showDone(letters.length);
+  } catch (err) {
+    disarmStop();
+    if (!(err instanceof StopTest)) throw err;
+    window.speechSynthesis?.cancel();
+    if (err.action === 'save') {
+      showDone(answered, true);
+    } else {
+      await discardSession();
+      showWelcome();
+    }
   }
-  $('progress-fill').style.width = '100%';
-  showDone(letters.length);
 }
 
-function showDone(total) {
+$('save-test-btn').addEventListener('click', () => {
+  if (stopTest && confirm('Finish this test now? The answers so far are saved.')) stopTest('save');
+});
+$('exit-test-btn').addEventListener('click', () => {
+  if (stopTest && confirm('Exit without saving? The answers and videos from this test will be deleted.')) stopTest('exit');
+});
+
+// `early` is true when the test was ended with "Save & finish".
+function showDone(total, early = false) {
   show('done');
   const { first } = state.student;
   const n = state.starsToday;
-  $('done-title').textContent = `🎉 ${TESTS[state.test].title} done!`;
-  $('done-summary').textContent = `${TESTS[state.test].done(state.passed, total)}, ${first}!`;
+  $('done-title').textContent = early ? '💾 Test saved!' : `🎉 ${TESTS[state.test].title} done!`;
+  $('done-summary').textContent = total
+    ? `${TESTS[state.test].done(state.passed, total)}, ${first}!`
+    : `See you next time, ${first}!`;
   $('done-stars').textContent = n
     ? `You earned ${n} ${n === 1 ? 'star' : 'stars'} today! You have ${state.stars} stars in all.`
     : `You have ${state.stars} stars. Let's practice and earn more!`;

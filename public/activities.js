@@ -100,7 +100,7 @@ function listenAndRepeat(box, letter) {
 }
 
 // 2. Say it on camera, hear yourself, and save the clip for the teacher.
-function sayIt(box, letter, { student }) {
+function sayIt(box, letter, { student, onStop }) {
   return new Promise((resolve) => {
     const video = el('video', { class: 'camera', autoplay: '', playsinline: '' });
     video.muted = true;
@@ -111,6 +111,9 @@ function sayIt(box, letter, { student }) {
     let stream = null;
     let clip = null;
     let clipUrl = null;
+
+    // If the test is stopped while this activity is open, turn the camera off.
+    onStop?.(() => stopCamera(stream));
 
     function finish() {
       stopCamera(stream);

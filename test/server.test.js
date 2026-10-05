@@ -179,6 +179,28 @@ test('teacher listening required: flagged, then marked by the teacher', async ()
   assert.deepEqual([after.answers[0].by, after.answers[0].correct], ['teacher', true]);
 });
 
+test('exiting a test removes only that test\'s answers and videos', async () => {
+  const eli = { first: 'Eli', last: 'Park', grade: '1', testDate: '2026-10-06' };
+  const kept = 'aaaaaaaaaaaaaaaaaaaaaaaa';
+  const gone = 'bbbbbbbbbbbbbbbbbbbbbbbb';
+  await answer(eli, 'A', 'name', true, { session: kept });
+  await answer(eli, 'B', 'name', true, { session: gone });
+  await answer(eli, 'C', 'sound', false, { session: gone });
+  const keptClip = await (await post(`/api/recordings?first=Eli&last=Park&letter=A&kind=sound&session=${kept}`, video, { 'Content-Type': 'video/webm' })).json();
+  const goneClip = await (await post(`/api/recordings?first=Eli&last=Park&letter=C&kind=sound&session=${gone}`, video, { 'Content-Type': 'video/webm' })).json();
+
+  const del = await fetch(`${base}/api/sessions/${gone}?first=Eli&last=Park`, { method: 'DELETE' });
+  assert.deepEqual(await del.json(), { ok: true, removedAnswers: 2, removedVideos: 1 });
+
+  const get = await teacherGet();
+  const eliNow = await (await get('/api/teacher/students/eli-park')).json();
+  assert.deepEqual(eliNow.answers.map((a) => a.letter), ['A']);
+  assert.deepEqual(eliNow.videos.map((v) => v.file), [keptClip.file]);
+  assert.equal(eliNow.stars, 1);
+  assert.ok(!eliNow.videos.some((v) => v.file === goneClip.file));
+  assert.equal((await fetch(`${base}/api/sessions/not-a-session?first=Eli&last=Park`, { method: 'DELETE' })).status, 404);
+});
+
 test('excel exports for the class and for one student', async () => {
   const get = await teacherGet();
   const cls = await get('/api/teacher/export.xlsx');

@@ -68,6 +68,11 @@ function splitName(full) {
   return words.length > 1 ? [words.slice(0, -1).join(' '), words.at(-1)] : [words[0] || '', ''];
 }
 
+// Each test run has a random id, so "Exit" can remove just that test's answers and videos.
+function isSession(value) {
+  return typeof value === 'string' && /^[a-f0-9]{16,64}$/.test(value);
+}
+
 function isLetter(value) {
   return typeof value === 'string' && /^[A-Z]$/.test(value);
 }
@@ -341,6 +346,7 @@ async function handleApi(req, res, url) {
       by: CHECKERS.includes(body.by) ? body.by : 'app',
       heard: String(body.heard || '').slice(0, 300),
       retry: Boolean(body.retry),
+      session: isSession(body.session) ? body.session : undefined,
       at: new Date().toISOString(),
     };
     // An answer waiting for the teacher never counts as right by itself.
@@ -364,7 +370,33 @@ async function handleApi(req, res, url) {
     const { dir } = await ensureStudent(student);
     const file = `${letter}-${kind === 'missed' ? '' : `${kind}-`}${Date.now()}.${ext}`;
     await fsp.writeFile(path.join(dir, 'videos', file), video);
+    if (isSession(query.session)) {
+      await fsp.appendFile(path.join(dir, 'videos', 'sessions.jsonl'), JSON.stringify({ file, session: query.session }) + '\n');
+    }
     return sendJson(res, 201, { ok: true, file });
+  }
+
+  // Student pressed "Exit": remove the answers and videos saved during that test.
+  const sessionMatch = /^\/api\/sessions\/([a-f0-9]{16,64})$/.exec(pathname);
+  if (req.method === 'DELETE' && sessionMatch) {
+    const session = sessionMatch[1];
+    const dir = studentDirFromParam(studentId(studentFromInput(query).name));
+    if (!dir) return sendJson(res, 200, { ok: true, removedAnswers: 0, removedVideos: 0 });
+    const attempts = await readAttempts(dir);
+    const kept = attempts.filter((a) => a.session !== session);
+    if (kept.length !== attempts.length) {
+      const file = path.join(dir, 'attempts.jsonl');
+      await fsp.writeFile(`${file}.tmp`, kept.map((a) => JSON.stringify(a) + '\n').join(''));
+      await fsp.rename(`${file}.tmp`, file);
+    }
+    const indexFile = path.join(dir, 'videos', 'sessions.jsonl');
+    const index = (await fsp.readFile(indexFile, 'utf8').catch(() => '')).split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    const drop = index.filter((v) => v.session === session && VIDEO_FILE.test(v.file));
+    for (const v of drop) await fsp.unlink(path.join(dir, 'videos', v.file)).catch(() => {});
+    if (drop.length) {
+      await fsp.writeFile(indexFile, index.filter((v) => v.session !== session).map((v) => JSON.stringify(v) + '\n').join(''));
+    }
+    return sendJson(res, 200, { ok: true, removedAnswers: attempts.length - kept.length, removedVideos: drop.length });
   }
 
   if (req.method === 'POST' && pathname === '/api/teacher/login') {

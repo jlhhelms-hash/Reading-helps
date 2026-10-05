@@ -22,6 +22,10 @@ A web app that checks whether elementary students know each letter's **name** an
 
 At the end of each test, students see how many letters they knew and how many stars they earned.
 
+**Save & finish / Exit:** two buttons in the bottom-right corner stay on screen during a test (on the letter, webcam and practice screens). Both ask "Are you sure?" first.
+- **💾 Save & finish** ends the test now. Answers so far are kept (they are saved after every letter), and the student sees their results.
+- **✕ Exit** leaves without saving. The answers and videos from *this* test are deleted (earlier tests are untouched), the camera turns off, and the student goes back to the test choice.
+
 **Stars:** every right answer earns a star, so the total keeps growing. The star chart shows two stars for each letter, one for its name and one for its sound (the chart doesn't say which is which). A letter's stars stay on the chart once earned.
 
 The **teacher page** (`/teacher`, protected by a PIN) lists students by last name. Each student's page shows:

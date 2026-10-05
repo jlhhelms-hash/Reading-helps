@@ -424,6 +424,28 @@ body.letters-bg {
   box-shadow: var(--shadow-soft);
   animation: bob 1.2s ease-in-out infinite;
 }
+/* Save & finish / Exit, shown during a test */
+.test-controls {
+  position: fixed;
+  bottom: 14px;
+  right: 14px;
+  z-index: 10;
+  display: flex;
+  gap: 8px;
+}
+.test-controls[hidden] { display: none; }
+.control-btn {
+  font-size: 0.95rem;
+  font-weight: 700;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 2px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+}
+.control-btn.exit { color: var(--no); border-color: color-mix(in srgb, var(--no) 40%, var(--line)); }
+main { padding-bottom: 72px; }
 .music-btn.off { animation: none; opacity: 0.8; }
 .music-btn[hidden] { display: none; }
 
